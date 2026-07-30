@@ -1,0 +1,64 @@
+{
+  "name": "keepr",
+  "productName": "KeepR",
+  "version": "0.1.0",
+  "description": "Offline-first receipt, expense, and document management",
+  "private": true,
+  "author": "Joshua Roberts",
+  "license": "MIT",
+  "main": "dist/main/index.js",
+  "_pinning_note": "ABI-critical natives (electron, better-sqlite3, sharp, @electron/rebuild) are pinned EXACTLY, no carets. A minor bump in any of them changes NODE_MODULE_VERSION expectations and produces the 'fixed itself after a rebuild' class of non-reproducible failure. Do not add ^ or ~ to these four.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "abi:check": "electron scripts/abi-check.mjs",
+    "abi:check:node": "node scripts/abi-check.mjs",
+    "serve": "electron . --serve --port 17915"
+  },
+  "dependencies": {
+    "better-sqlite3": "11.8.1",
+    "exceljs": "^4.4.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
+    "sharp": "0.34.1",
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "3.7.2",
+    "@types/node": "^26.1.2",
+    "electron": "33.4.11",
+    "typescript": "^5.7.3"
+  },
+  "build": {
+    "appId": "com.blinkingsun.keepr",
+    "productName": "KeepR",
+    "asarUnpack": [
+      "**/node_modules/sharp/**",
+      "**/node_modules/@img/**",
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/tesseract.js/**",
+      "**/node_modules/tesseract.js-core/**",
+      "resources/tessdata/**"
+    ],
+    "_asarUnpack_note": "sharp ships platform packages under @img and loads libvips from disk; better-sqlite3 is a classic .node addon; tesseract.js needs its wasm core and traineddata reachable as real files. All of these fail if left inside the asar archive. The app would launch and then die on first import.",
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/tessdata",
+        "to": "tessdata"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
