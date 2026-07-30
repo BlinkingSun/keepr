@@ -1,0 +1,164 @@
+/**
+ * KeepR design tokens — Lane 0, owned by the orchestrator.
+ *
+ * The approved values from design/DESIGN.md. No lane hard-codes a colour, a
+ * radius, or a duration; everything references a token here. That is what makes
+ * the accent a one-line change instead of a find-and-replace across the UI.
+ *
+ * Dark only in Phase 1. The :root[data-theme='light'] block exists so a future
+ * light mode is an additive change rather than a refactor — it is NOT wired up
+ * and must not be referenced by any component yet.
+ */
+
+:root {
+  /* ---- surfaces ------------------------------------------------------- */
+  --bg-base: #0f1113;
+  --bg-panel: #16191c;
+  --bg-elevated: #1e2226;
+  --bg-hover: #23282d;
+  --bg-selected: #14b8a61f; /* accent at low alpha — selection tint          */
+  --border-subtle: #2a2f35;
+  --border-strong: #3a4149;
+
+  /* ---- text: three steps, no more ------------------------------------- */
+  --text-primary: #e8ebed;
+  --text-secondary: #a3acb4;
+  --text-muted: #6b747c;
+
+  /* ---- accent: TEAL, approved 2026-07-30 ------------------------------ */
+  --accent: #14b8a6;
+  --accent-hover: #2dd4bf;
+  --accent-active: #0d9488;
+  /* Text ON an accent-filled surface is DARK, not white. White on this teal
+     is roughly 2.4:1 and fails WCAG AA; near-black is roughly 9:1. Applies to
+     primary buttons, the active segmented item, and selected rows. */
+  --on-accent: #0f1113;
+
+  /* ---- semantic: only ever used for the meaning they name -------------- */
+  --warn: #e8a33d; /* low OCR confidence, missing key data                  */
+  --warn-bg: #e8a33d1a;
+  --danger: #e05252; /* destructive actions, trash                          */
+  --danger-bg: #e052521a;
+  --ok: #4da167; /* reviewed, reconciled                                    */
+  --ok-bg: #4da1671a;
+
+  /* ---- type ----------------------------------------------------------- */
+  --font-ui: -apple-system, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  /* Tabular figures are mandatory for money: proportional digits make a
+     column of amounts impossible to scan or compare. */
+  --font-mono-num: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --fs-base: 13px;
+  --fs-sm: 12px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --lh-tight: 1.25;
+  --lh-base: 1.45;
+
+  /* ---- density: compact by default ------------------------------------ */
+  /* This is a tool for processing hundreds of receipts. Vertical padding is
+     rows you cannot see, and rows you cannot see are work. */
+  --row-h: 28px;
+  --row-h-comfortable: 36px;
+  --header-h: 32px;
+  --toolbar-h: 40px;
+  --statusbar-h: 26px;
+
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+
+  /* ---- panes ---------------------------------------------------------- */
+  --nav-w: 232px;
+  --nav-w-min: 160px;
+  --inspector-w: 320px;
+  --inspector-w-min: 240px;
+  --filmstrip-h: 96px;
+
+  /* ---- elevation ------------------------------------------------------ */
+  --shadow-panel: 0 1px 2px #0000004d;
+  --shadow-popover: 0 4px 16px #00000073;
+  --focus-ring: 0 0 0 2px var(--accent);
+
+  /* ---- motion --------------------------------------------------------- */
+  /* Animation belongs on view transitions and panel reveals. It does NOT
+     belong on data rows: a grid that animates while you arrow through it is
+     actively harder to use. */
+  --dur-instant: 90ms;
+  --dur-fast: 140ms;
+  --dur-base: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Respect the user's OS-level reduced-motion preference. Non-negotiable. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0ms;
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+  }
+}
+
+/* Not wired up. Placeholder so light mode is additive later. Do not reference. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* ---- base ------------------------------------------------------------- */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden; /* panes scroll individually; the window never does */
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font: var(--fs-base) / var(--lh-base) var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  user-select: none; /* a data tool, not a document; opt in per element */
+}
+
+/* Money and every other figure that gets compared down a column. */
+.num {
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: right;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Keyboard focus must always be visible — the Inbox is driven from the
+   keyboard and an invisible focus ring makes it unusable. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--bg-base);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

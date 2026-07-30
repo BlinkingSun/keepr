@@ -9,6 +9,11 @@
     "exactOptionalPropertyTypes": false,
     "noEmit": true,
     "skipLibCheck": true,
+    // Required because the codebase imports with explicit .ts extensions, which
+    // is what `node --experimental-strip-types` needs at runtime. Legal only
+    // alongside noEmit. Lane A correctly reported this as a blocker rather than
+    // editing this file.
+    "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
