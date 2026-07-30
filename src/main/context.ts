@@ -8,6 +8,7 @@
  * rather than a parallel implementation that can drift.
  */
 import type Database from 'better-sqlite3'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { createRepositories, type Repositories } from '../db/repo/index.ts'
 import { DiskFileStore } from '../store/fileStore.ts'
@@ -34,9 +35,41 @@ export interface CreateContextOptions {
   skipBackup?: boolean
 }
 
+/**
+ * Locate the migrations directory across every way this code runs, rather than
+ * assuming one layout:
+ *   - bundled Electron (CJS): dist/main/index.js, schema copied to dist/schema
+ *   - packaged app: same, inside the app resources
+ *   - dev via node --experimental-strip-types: src/main/*.ts next to src/db/schema
+ *
+ * The first attempt resolved against `import.meta.dirname`, which is undefined in
+ * the CJS bundle — so it silently fell back to the process working directory and
+ * looked for the schema one level above the project. Failing loudly with the list
+ * of paths tried beats guessing.
+ */
+function resolveSchemaDir(explicit?: string): string {
+  if (explicit) return explicit
+  const here =
+    typeof __dirname !== 'undefined'
+      ? __dirname
+      : path.dirname(new URL(import.meta.url).pathname)
+
+  const candidates = [
+    path.resolve(here, '..', 'schema'), // dist/main -> dist/schema (bundled)
+    path.resolve(here, '..', 'db', 'schema'), // src/main -> src/db/schema (dev)
+    path.resolve(here, '..', '..', 'src', 'db', 'schema'),
+    path.resolve(process.cwd(), 'src', 'db', 'schema'),
+  ]
+  for (const c of candidates) {
+    if (existsSync(path.join(c, '001_initial.sql'))) return c
+  }
+  throw new Error(
+    `cannot locate the migrations directory. Tried:\n  ${candidates.join('\n  ')}`,
+  )
+}
+
 export function createContext(opts: CreateContextOptions): AppContext {
-  const schemaDir =
-    opts.schemaDir ?? path.resolve(import.meta.dirname ?? '.', '..', 'db', 'schema')
+  const schemaDir = resolveSchemaDir(opts.schemaDir)
 
   const { db, dbPath, schemaVersion } = openLibrary({
     libraryRoot: opts.libraryRoot,

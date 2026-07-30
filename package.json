@@ -9,17 +9,24 @@
   "main": "dist/main/index.js",
   "_pinning_note": "ABI-critical natives (electron, better-sqlite3, sharp, @electron/rebuild) are pinned EXACTLY, no carets. A minor bump in any of them changes NODE_MODULE_VERSION expectations and produces the 'fixed itself after a rebuild' class of non-reproducible failure. Do not add ^ or ~ to these four.",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs && vite build",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "abi:check": "electron scripts/abi-check.mjs",
     "abi:check:node": "node scripts/abi-check.mjs",
-    "serve": "electron . --serve --port 17915"
+    "serve": "npm run rebuild:node --silent && node --experimental-strip-types src/main/serve.ts",
+    "start": "npm run rebuild:electron --silent && npm run build && electron dist/main/index.js",
+    "test": "npm run rebuild:node --silent && node --experimental-strip-types --test src/db/repo/__tests__/*.ts src/ocr/__tests__/*.ts src/store/__tests__/*.ts",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+    "test:schema": "npm run rebuild:node --silent && node --experimental-strip-types spikes/schema-verify.ts"
   },
   "dependencies": {
     "better-sqlite3": "11.8.1",
     "exceljs": "^4.4.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "sharp": "0.34.1",
     "tesseract.js": "^5.1.1"
   },
@@ -27,8 +34,13 @@
     "@electron/rebuild": "3.7.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
     "electron": "33.4.11",
-    "typescript": "^5.7.3"
+    "esbuild": "^0.28.1",
+    "typescript": "^5.7.3",
+    "vite": "^8.2.0"
   },
   "build": {
     "appId": "com.blinkingsun.keepr",

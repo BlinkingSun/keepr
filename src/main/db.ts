@@ -86,7 +86,12 @@ export function openLibrary(opts: OpenOptions): OpenResult {
 
   // Back up before touching an existing library. A migration that goes wrong on
   // someone's only copy of five years of receipts is unrecoverable otherwise.
-  if (toApply.length && !isNew && !opts.skipBackup) {
+  //
+  // Guarded on hasTable as well as isNew, because "the file exists" does not mean
+  // "there is a schema to protect": a crash during the very first run leaves a
+  // created-but-unmigrated database, and reading schema_migrations from it throws.
+  // There is nothing worth backing up in that state anyway.
+  if (toApply.length && !isNew && hasTable.c && !opts.skipBackup) {
     const dir = path.join(opts.libraryRoot, 'backups')
     mkdirSync(dir, { recursive: true })
     const stamp = String(
