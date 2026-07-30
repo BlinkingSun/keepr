@@ -17,12 +17,17 @@ export interface Statement {
   iterate(...params: unknown[]): IterableIterator<unknown>
 }
 
-export interface Database {
-  prepare(sql: string): Statement
-  exec(sql: string): this
-  pragma(source: string, options?: { simple?: boolean }): unknown
-  transaction<T extends (...args: never[]) => unknown>(fn: T): T
-  close(): void
-}
+/**
+ * The real better-sqlite3 instance type, from @types/better-sqlite3.
+ *
+ * This was a hand-rolled structural interface while package.json was frozen
+ * during wave 2. The execution audit flagged the risk: a thin shim types future
+ * calls green that are wrong at runtime, and it had already drifted — it declared
+ * `transaction<T>(fn: T): T` where the real signature returns a `Transaction<T>`
+ * carrying .deferred / .immediate / .exclusive. Now that integration owns
+ * package.json again, use the genuine types so the compiler checks against
+ * reality rather than against our summary of it.
+ */
+export type Database = import('better-sqlite3').Database
 
 export type { FileStore } from '../../shared/types.ts'
