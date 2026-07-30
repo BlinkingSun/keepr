@@ -267,11 +267,11 @@ function classifyTotalKind(lower: string): TotalCandidate['kind'] {
 
 function moneyFromLine(line: Line, next: Line | undefined): { minor: number; confidence: number } | null {
   // Prefer amount on the same line after the label
-  const same = findMoneyInText(line.text)
+  const same = findMoneyInText(line.text, { labelled: true })
   if (same) return same
   // Amount often sits alone on the next line (thermal layout)
   if (next) {
-    const n = findMoneyInText(next.text)
+    const n = findMoneyInText(next.text, { labelled: true })
     // Only take next-line if it is mostly a number
     if (n && /^[\s$€£S(]*[\d.,]+-?[\s)]*$/.test(next.text.trim())) return n
   }

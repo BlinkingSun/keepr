@@ -43,3 +43,35 @@ describe('parseMoney', () => {
     assert.equal(r!.minor, 8143)
   })
 })
+
+// Added after the wave-2 execution audit. A bare integer on a labelled line is
+// read literally: "TOTAL 100" is one hundred dollars. Previously it parsed as
+// $1.00 by assuming OCR had dropped a decimal — a 100x error on the single most
+// important field, and a plausible-looking one, which is the worst combination.
+it('labelled bare integers are read as major units, not cents', () => {
+  assert.equal(findMoneyInText('TOTAL 100', { labelled: true })?.minor, 10000)
+  assert.equal(findMoneyInText('TOTAL 1000', { labelled: true })?.minor, 100000)
+  assert.equal(findMoneyInText('AMOUNT DUE 25', { labelled: true })?.minor, 2500)
+  // Decimal amounts are unaffected and keep their high confidence.
+  assert.equal(findMoneyInText('TOTAL 84.37', { labelled: true })?.minor, 8437)
+  assert.equal(findMoneyInText('TOTAL 84.37', { labelled: true })?.confidence, 0.95)
+})
+
+it('unlabelled bare integers still assume a dropped decimal', () => {
+  // Free-floating OCR noise is likelier to be a lost decimal point than a
+  // round total, so this reading is retained — at low confidence.
+  assert.equal(parseMoney('8437')?.minor, 8437)
+  assert.ok((parseMoney('8437')?.confidence ?? 1) < 0.75, 'must sit below the amber threshold')
+})
+
+it('ambiguous money never reaches the high-confidence band', () => {
+  // Both readings of a bare integer are guesses. Neither may present itself as
+  // trustworthy, because the Inbox lets the user bulk-accept.
+  for (const s of ['100', '8437', '25', '1234']) {
+    const r = parseMoney(s)
+    assert.ok(r, `${s} should parse`)
+    assert.ok(r!.confidence < 0.75, `${s} confidence ${r!.confidence} must stay under 0.75`)
+  }
+  const labelled = findMoneyInText('TOTAL 100', { labelled: true })
+  assert.ok(labelled!.confidence < 0.75, 'labelled bare integer is still a guess')
+})

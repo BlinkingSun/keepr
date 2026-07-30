@@ -88,6 +88,13 @@ export interface ListRequest {
   includeSubfolders?: boolean
   type?: ItemType
   smartFilter?: 'all' | 'recent' | 'unreviewed' | 'inbox' | 'trash'
+  /**
+   * Include superseded split origins. Default false, and it should stay false
+   * for any grid the user reads totals from: an origin listed beside its own
+   * children makes the visible amounts add to double the real money. Set true
+   * only for a deliberate split-history view reached from a child's badge.
+   */
+  includeSuperseded?: boolean
   sort?: Array<{ column: string; dir: 'asc' | 'desc' }>
   limit?: number
   offset?: number

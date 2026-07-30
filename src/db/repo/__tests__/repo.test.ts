@@ -39,6 +39,42 @@ describe('Lane A repositories', () => {
     assert.notEqual(usd.totalMinor, naive)
   })
 
+  // 1b. The ROWS must not double-count either. The status-bar total being right
+  // is necessary and not sufficient: the grid does not sum, it displays, and the
+  // user does the arithmetic. Listing a superseded origin beside its own three
+  // children made the visible amounts add to 20000 while the footer said 10000,
+  // so select-all showed double the real money. Found by the execution audit.
+  it('1b. list() ROWS for a split folder sum to the original, not double', () => {
+    const { originTotal, originId, childIds } = seedSplitReceipt(fx)
+    const res = fx.repos.items.list({ folderId: fx.folderUser })
+
+    const rowSum = res.rows.reduce((a, r) => a + (r.totalMinor ?? 0), 0)
+    assert.equal(
+      rowSum,
+      originTotal,
+      `visible row amounts must sum to ${originTotal}, got ${rowSum} — the grid is double-showing the split`,
+    )
+    assert.ok(
+      !res.rows.some((r) => r.itemId === originId),
+      'the superseded origin must not appear in the default grid',
+    )
+    for (const cid of childIds) {
+      assert.ok(res.rows.some((r) => r.itemId === cid), `child ${cid} must be listed`)
+    }
+    // Row money and footer money must agree — that is the actual product invariant.
+    assert.equal(rowSum, res.totals.byCurrency[0]?.totalMinor)
+  })
+
+  // 1c. The origin is excluded, not destroyed. It remains reachable as history.
+  it('1c. superseded origin is still retrievable with includeSuperseded', () => {
+    const { originId } = seedSplitReceipt(fx)
+    const res = fx.repos.items.list({ folderId: fx.folderUser, includeSuperseded: true })
+    assert.ok(
+      res.rows.some((r) => r.itemId === originId),
+      'includeSuperseded must surface the origin for a split-history view',
+    )
+  })
+
   // 2. mixed-currency folder → one entry per currency, never blended
   it('2. list() mixed-currency returns one entry per currency, never blended', () => {
     mkReceipt(fx.raw, fx.folderUser, {
@@ -104,8 +140,11 @@ describe('Lane A repositories', () => {
     assert.ok(res.rows.length === 5000)
     // No N+1: must stay well under a linear-per-row budget. Cap at 20 statements.
     assert.ok(
-      n <= 20,
-      `expected ≤20 queries for 5000 rows, got ${n} (N+1 regression)`,
+      // Tightened from 20 after the audit noted that a 20-query ceiling leaves
+      // room for a soft N+1 to hide. The real budget is ~4; 6 allows a little
+      // headroom without concealing per-row work.
+      n <= 6,
+      `expected ≤6 queries for 5000 rows, got ${n} (N+1 regression)`,
     )
     assert.ok(n >= 1, 'should issue at least one query')
   })

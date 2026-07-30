@@ -18,7 +18,26 @@ export interface MoneyParseResult {
  * Parse a money-like token or short phrase into minor units.
  * Examples: "1,234.56", "1.234,56", "$84.37", "84.37-", "84,37", "8437", "S4.37"
  */
-export function parseMoney(raw: string): MoneyParseResult | null {
+export interface MoneyParseOptions {
+  /**
+   * True when this amount was found on a line carrying an explicit money label
+   * (TOTAL, TAX, SUBTOTAL...). It changes how a bare integer with no decimal
+   * point is read.
+   *
+   * `TOTAL 100` on a real receipt means one hundred dollars. Reading it as a
+   * dropped decimal gives $1.00 — a hundredfold error in the single most
+   * important field in the application. So on a labelled line we take the
+   * literal reading, which is what a person looking at the paper would
+   * conclude. An unlabelled bare `8437` floating in OCR noise is likelier to be
+   * a dropped decimal, so that keeps the cents reading.
+   *
+   * Either way confidence stays low enough to surface as amber in the Inbox,
+   * because both readings are genuinely ambiguous.
+   */
+  labelled?: boolean
+}
+
+export function parseMoney(raw: string, opts: MoneyParseOptions = {}): MoneyParseResult | null {
   if (raw == null || typeof raw !== 'string') return null
   let s = raw.trim()
   if (!s) return null
@@ -56,7 +75,7 @@ export function parseMoney(raw: string): MoneyParseResult | null {
   s = s.replace(/[^\d.,]/g, '')
   if (!s || !/\d/.test(s)) return null
 
-  const parsed = parseAmountToken(s)
+  const parsed = parseAmountToken(s, opts)
   if (parsed == null) return null
 
   const minor = negative ? -parsed.minor : parsed.minor
@@ -66,7 +85,7 @@ export function parseMoney(raw: string): MoneyParseResult | null {
 /**
  * Scan free text for the first money-like amount (used when amount follows a label).
  */
-export function findMoneyInText(text: string): MoneyParseResult | null {
+export function findMoneyInText(text: string, opts: MoneyParseOptions = {}): MoneyParseResult | null {
   if (!text) return null
   // Prefer tokens that look like currency amounts.
   // Leading minus/paren for refunds; trailing minus for accounting style.
@@ -78,7 +97,7 @@ export function findMoneyInText(text: string): MoneyParseResult | null {
     const raw = (m[0] ?? '').trim()
     // Skip bare tiny integers that are likely quantities (e.g. "x3") when
     // a better decimal candidate may still appear — handled by confidence.
-    const r = parseMoney(raw)
+    const r = parseMoney(raw, opts)
     if (!r) continue
     // Prefer higher-confidence (has decimal) over bare integers.
     // Prefer more negative? No — prefer higher conf, then larger abs with sign preserved.
@@ -88,7 +107,7 @@ export function findMoneyInText(text: string): MoneyParseResult | null {
     }
   }
   // Also try whole-string parse for "TOTAL -54.11" style (minus after label)
-  const whole = parseMoney(text.replace(/^[A-Za-z\s#:.*]+/u, '').trim())
+  const whole = parseMoney(text.replace(/^[A-Za-z\s#:.*]+/u, '').trim(), opts)
   if (whole && (!best || whole.confidence >= best.confidence)) {
     // Prefer signed whole-line parse when it carries a negative and token scan missed it
     if (whole.minor < 0 || !best) best = whole
@@ -97,7 +116,7 @@ export function findMoneyInText(text: string): MoneyParseResult | null {
   return best
 }
 
-function parseAmountToken(s: string): MoneyParseResult | null {
+function parseAmountToken(s: string, opts: MoneyParseOptions = {}): MoneyParseResult | null {
   const hasComma = s.includes(',')
   const hasDot = s.includes('.')
 
@@ -166,16 +185,26 @@ function parseAmountToken(s: string): MoneyParseResult | null {
     return fromParts(s.replace(/\./g, ''), '00', 0.55)
   }
 
-  // Digits only — OCR often drops the decimal: "8437" means $84.37
+  // Digits only, no separator at all — genuinely ambiguous.
   if (/^\d+$/.test(s)) {
+    if (opts.labelled) {
+      // Labelled line: take the literal reading. "TOTAL 100" is $100.00, not
+      // $1.00. Getting this backwards is a 100x error on the field that matters
+      // most, and it reads as plausible, so nobody catches it.
+      return fromParts(s, '00', 0.6)
+    }
     if (s.length >= 3) {
-      // Interpret last two digits as cents (high prior for receipt totals)
+      // Unlabelled multi-digit token: likelier a decimal that OCR dropped,
+      // so "8437" reads as $84.37. Confidence deliberately below the 0.75
+      // display threshold — this is a guess, and it must show as one.
       const whole = s.slice(0, -2)
       const frac = s.slice(-2)
-      return fromParts(whole === '' ? '0' : whole, frac, 0.55)
+      return fromParts(whole === '' ? '0' : whole, frac, 0.5)
     }
-    // 1–2 digit bare integer: whole dollars
-    return fromParts(s, '00', 0.4)
+    // 1-2 digit bare integer: whole dollars. Confidence raised to 0.45 so it is
+    // no longer ranked BELOW the cents guess above; the previous ordering made
+    // the more speculative interpretation win a tie-break.
+    return fromParts(s, '00', 0.45)
   }
 
   return null

@@ -285,6 +285,19 @@ export class ItemsRepo {
       clauses.push(`i.trashed_at IS NULL`)
     }
 
+    // Superseded split origins are excluded from the grid, matching
+    // v_summable_receipts. The status-bar totals were already correct, but the
+    // ROWS were not: a split $100 receipt listed the origin plus its three
+    // children, so the visible amounts added to $200 while the footer said
+    // $100. Guarding SQL sums was not enough, because the grid does not sum —
+    // it displays, and the user does the arithmetic. Select-all showed a lie.
+    //
+    // The origin is not lost: it is historical truth, reachable from any
+    // child's split badge via includeSuperseded.
+    if (!req.includeSuperseded) {
+      clauses.push(`i.superseded_at IS NULL`)
+    }
+
     if (req.smartFilter === 'unreviewed') {
       clauses.push(`i.reviewed_at IS NULL`)
     }
