@@ -16,7 +16,7 @@ import type {
 } from '../../shared/ipc.ts'
 import { hasBridge, invoke, on } from '../bridge.ts'
 import { NavPanel } from '../nav/index.ts'
-import { GridPanel, DEFAULT_COLUMNS, formatMoney, type ColumnState, type SortSpec } from '../grid/index.ts'
+import { GridPanel, DEFAULT_COLUMNS, formatMoney, pruneToVisible, type ColumnState, type SortSpec } from '../grid/index.ts'
 import { ViewerPanel } from '../viewer/index.ts'
 
 type ViewMode = 'grid' | 'thumbnail' | 'details'
@@ -54,6 +54,10 @@ export function App() {
   // Guards against a slow response for an abandoned filter overwriting the
   // current one — the same generation problem the OCR path has.
   const reqSeq = useRef(0)
+  // The detail fetch needs its own generation for the same reason the list does:
+  // open A, quickly open B, and A's slower response would otherwise land last and
+  // show A's fields while B is selected.
+  const detailSeq = useRef(0)
 
   const refresh = useCallback(async () => {
     if (offline) return
@@ -109,13 +113,16 @@ export function App() {
 
   useEffect(() => {
     if (offline || openItemId == null) { setDetail(null); return }
+    const seq = ++detailSeq.current
     setDetailLoading(true)
     void (async () => {
       try {
-        setDetail(await invoke('item:detail', { id: openItemId }))
+        const d = await invoke('item:detail', { id: openItemId })
+        if (seq !== detailSeq.current) return // a newer selection already won
+        setDetail(d)
         setActivePage(0)
-      } catch (e) { setError((e as Error).message) }
-      finally { setDetailLoading(false) }
+      } catch (e) { if (seq === detailSeq.current) setError((e as Error).message) }
+      finally { if (seq === detailSeq.current) setDetailLoading(false) }
     })()
   }, [offline, openItemId])
 
@@ -130,6 +137,50 @@ export function App() {
     }
     return res
   }, [refresh, loadFolders, openItemId])
+
+  /**
+   * Changing what is on screen invalidates what was selected on it.
+   *
+   * Without this, selecting three receipts and switching folder left the status bar
+   * claiming "3 selected" for rows that are not visible, the inspector showing an
+   * item absent from the list, and any bulk operation acting on invisible ids.
+   */
+  const changeScope = useCallback((apply: () => void) => {
+    setSelectedIds(new Set())
+    setOpenItemId(null)
+    setDetail(null)
+    apply()
+  }, [])
+
+  /**
+   * A selection can also go stale WITHOUT the user changing scope — a background
+   * refresh after OCR or an import can drop rows. Prune to what is actually
+   * listed, so a bulk action can never reach an id the user cannot see.
+   */
+  useEffect(() => {
+    const live = new Set(rows.map((r) => r.itemId))
+    setSelectedIds((prev) => pruneToVisible(prev, live))
+    if (openItemId != null && rows.length > 0 && !live.has(openItemId)) {
+      setOpenItemId(null)
+      setDetail(null)
+    }
+  }, [rows, openItemId])
+
+  /** Selection totals for the status bar — per currency, from the listed rows. */
+  const selectionTotals = useMemo(() => {
+    if (selectedIds.size === 0) return null
+    const byCur = new Map<string, { totalMinor: number; taxMinor: number; count: number }>()
+    for (const r of rows) {
+      if (!selectedIds.has(r.itemId)) continue
+      const cur = r.currency || 'USD'
+      const acc = byCur.get(cur) ?? { totalMinor: 0, taxMinor: 0, count: 0 }
+      acc.totalMinor += r.totalMinor ?? 0
+      acc.taxMinor += r.taxTotalMinor ?? 0
+      acc.count += 1
+      byCur.set(cur, acc)
+    }
+    return [...byCur.entries()].map(([currency, v]) => ({ currency, ...v }))
+  }, [rows, selectedIds])
 
   const inbox = useMemo(() => folders.find((f) => f.kind === 'inbox') ?? null, [folders])
 
@@ -174,8 +225,8 @@ export function App() {
           inboxCount={inboxCount}
           selectedFolderId={selectedFolder}
           smartFilter={smartFilter}
-          onSelectFolder={(id) => { setSelectedFolder(id); setSmartFilter('all') }}
-          onSelectSmartFilter={(f) => { setSmartFilter(f); setSelectedFolder(null) }}
+          onSelectFolder={(id) => changeScope(() => { setSelectedFolder(id); setSmartFilter('all') })}
+          onSelectSmartFilter={(f) => changeScope(() => { setSmartFilter(f); setSelectedFolder(null) })}
           onCreateFolder={async (parentId, name) => {
             await invoke('folder:create', { parentId, name }); await loadFolders()
           }}
@@ -286,9 +337,19 @@ export function App() {
             ? ` · ${folders.find((f) => f.id === selectedFolder)!.name}` : ''}
         </span>
         <span className="status-right">
-          {/* Per-currency, always. One blended figure across currencies would be a
-              lie with a currency symbol in front of it. */}
-          {totals && totals.byCurrency.length > 1 ? (
+          {/* When a selection exists, the status bar reports the SELECTION, because
+              multi-selecting to check a partial sum is the reason to select at all.
+              Labelled so it is never mistaken for the filter total. Per-currency
+              either way: one blended figure across currencies would be a lie with a
+              currency symbol in front of it. */}
+          {selectionTotals ? (
+            selectionTotals.map((c) => (
+              <span key={c.currency} className="stat">
+                Selected{selectionTotals.length > 1 ? ` ${c.currency}` : ''}{' '}
+                <strong className="num">{formatMoney(c.totalMinor, c.currency)}</strong>
+              </span>
+            ))
+          ) : totals && totals.byCurrency.length > 1 ? (
             totals.byCurrency.map((c) => (
               <span key={c.currency} className="stat">
                 {c.currency} <strong className="num">{formatMoney(c.totalMinor, c.currency)}</strong>

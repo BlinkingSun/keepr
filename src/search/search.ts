@@ -156,22 +156,24 @@ function queryOcrBm25(
   includeTrashed: boolean,
 ): { ocrRaw: Map<number, number>; snippets: Map<number, string | null> } {
   // NEVER match page_fts alone for default search — join the trash gate.
-  // Collapse multi-page hits: MIN(bm25) per item (lower BM25 = better).
+  //
+  // FTS5 forbids bm25()/snippet() inside aggregates or outer subqueries
+  // ("unable to use function bm25 in the requested context"), so we fetch
+  // one row per matching page and collapse to one item hit in JS:
+  // best (minimum) BM25 wins; first non-null snippet is kept.
   const sql = includeTrashed
     ? `SELECT p.item_id AS item_id,
-              MIN(bm25(page_fts)) AS b,
-              MIN(snippet(page_fts, 0, '', '', '…', 10)) AS snip
+              bm25(page_fts) AS b,
+              snippet(page_fts, 0, '', '', '…', 10) AS snip
          FROM page_fts f
          JOIN page p ON p.id = f.rowid
-        WHERE page_fts MATCH ?
-        GROUP BY p.item_id`
+        WHERE page_fts MATCH ?`
     : `SELECT sp.item_id AS item_id,
-              MIN(bm25(page_fts)) AS b,
-              MIN(snippet(page_fts, 0, '', '', '…', 10)) AS snip
+              bm25(page_fts) AS b,
+              snippet(page_fts, 0, '', '', '…', 10) AS snip
          FROM page_fts f
          JOIN v_searchable_pages sp ON sp.page_id = f.rowid
-        WHERE page_fts MATCH ?
-        GROUP BY sp.item_id`
+        WHERE page_fts MATCH ?`
 
   const ocrRaw = new Map<number, number>()
   const snippets = new Map<number, string | null>()
@@ -182,8 +184,14 @@ function queryOcrBm25(
       snip: string | null
     }>
     for (const r of rows) {
-      ocrRaw.set(r.item_id, r.b)
-      snippets.set(r.item_id, r.snip)
+      const prev = ocrRaw.get(r.item_id)
+      // Lower BM25 is better — keep the best page score per item.
+      if (prev === undefined || r.b < prev) {
+        ocrRaw.set(r.item_id, r.b)
+        if (r.snip != null) snippets.set(r.item_id, r.snip)
+      } else if (!snippets.has(r.item_id) && r.snip != null) {
+        snippets.set(r.item_id, r.snip)
+      }
     }
   } catch (e) {
     throw new SearchQueryError(

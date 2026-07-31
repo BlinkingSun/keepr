@@ -71,7 +71,19 @@ export function GridPanel(props: GridPanelProps): ReactNode {
   const [viewportHeight, setViewportHeight] = useState(400)
   const [focus, setFocus] = useState<FocusPos>({ row: 0, col: 0 })
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
-  const [editing, setEditing] = useState<{ row: number; col: number; draft: string } | null>(null)
+  /**
+   * Editing is keyed by itemId, NOT by row index.
+   *
+   * The index alone is a correctness bug: a background refresh (OCR finishing, an
+   * import landing, a re-sort) reorders `rows` while the editor is open, and
+   * committing by index then writes the draft onto whichever item now occupies
+   * that position. That silently puts a value on the wrong receipt, which is the
+   * worst failure this application can have. The index is kept only for focus and
+   * is re-derived from itemId before any write.
+   */
+  const [editing, setEditing] = useState<
+    { itemId: number; row: number; col: number; draft: string } | null
+  >(null)
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({})
   const [colMenuOpen, setColMenuOpen] = useState(false)
   const dragCol = useRef<{ key: string; fromOrder: number } | null>(null)
@@ -133,6 +145,7 @@ export function GridPanel(props: GridPanelProps): ReactNode {
       const col = visCols[colIdx]
       if (!row || !col || !EDITABLE_FIELDS.has(col.key)) return
       setEditing({
+        itemId: row.itemId,
         row: rowIdx,
         col: colIdx,
         draft: cellEditValue(row, col.key),
@@ -151,9 +164,13 @@ export function GridPanel(props: GridPanelProps): ReactNode {
   const commitEdit = useCallback(
     async (move: 'down' | 'right' | 'none') => {
       if (!editing) return
-      const row = rows[editing.row]
+      // Re-derive position from itemId: the list may have reordered underneath us.
+      const rowIdx = rows.findIndex((r) => r.itemId === editing.itemId)
+      const row = rowIdx >= 0 ? rows[rowIdx] : undefined
       const col = visCols[editing.col]
       if (!row || !col) {
+        // The item being edited is no longer in the list. Discard rather than
+        // write the draft somewhere it does not belong.
         setEditing(null)
         return
       }
@@ -200,7 +217,7 @@ export function GridPanel(props: GridPanelProps): ReactNode {
 
       if (move === 'down' || move === 'right') {
         const next = navigateFocus(
-          { row: editing.row, col: editing.col },
+          { row: rowIdx, col: editing.col },
           move === 'down' ? 'Enter' : 'Tab',
           { rowCount: rows.length, colCount: visCols.length },
         )
@@ -384,7 +401,17 @@ export function GridPanel(props: GridPanelProps): ReactNode {
 
       const action = keyMap[e.key]
       if (!action) return
-      if (e.key === 'Tab') e.preventDefault()
+      if (e.key === 'Tab') {
+        // Let focus escape at the edges instead of trapping it. Tab past the last
+        // cell of the last row, or Shift-Tab before the first, falls through to the
+        // browser so the user reaches the nav pane and inspector. Previously Tab
+        // always preventDefault'd, so a keyboard-only user could never leave.
+        const atEnd =
+          !e.shiftKey && focus.row === rows.length - 1 && focus.col === visCols.length - 1
+        const atStart = e.shiftKey && focus.row === 0 && focus.col === 0
+        if (atEnd || atStart) return
+        e.preventDefault()
+      }
       else if (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End' || e.key.startsWith('Page')) {
         e.preventDefault()
       } else if (e.key === 'Enter') {
@@ -577,7 +604,7 @@ export function GridPanel(props: GridPanelProps): ReactNode {
                     focusedRow={focus.row === rowIdx}
                     focusCol={focus.row === rowIdx ? focus.col : -1}
                     editing={
-                      editing && editing.row === rowIdx
+                      editing && editing.itemId === row.itemId
                         ? { col: editing.col, draft: editing.draft }
                         : null
                     }

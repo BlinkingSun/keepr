@@ -14,6 +14,7 @@ export {
   clearSelection,
   clampRange,
   applyClick,
+  pruneToVisible,
 } from './selection.ts'
 export {
   reorderColumns,

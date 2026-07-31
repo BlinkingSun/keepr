@@ -10,6 +10,7 @@ import {
   selectAll,
   selectRange,
   toggleSelection,
+  pruneToVisible,
 } from '../selection.ts'
 
 const ids = [10, 20, 30, 40, 50]
@@ -93,5 +94,34 @@ describe('applyClick', () => {
     })
     assert.deepEqual([...r.selected].sort((a, b) => a - b), [20, 30, 40])
     assert.equal(r.anchorIndex, 1)
+  })
+})
+
+// Regression tests for the stale-selection defect the wave-3 execution audit
+// found: a selection surviving a folder switch or a background refresh, so a
+// bulk operation could act on ids the user could not see.
+describe('pruneToVisible', () => {
+  it('drops ids that are no longer listed', () => {
+    const kept = pruneToVisible(new Set([1, 2, 3]), [2, 3, 4])
+    assert.deepEqual([...kept].sort((a, b) => a - b), [2, 3])
+  })
+
+  it('returns the SAME set instance when nothing changed (no re-render loop)', () => {
+    const sel = new Set([1, 2])
+    assert.equal(pruneToVisible(sel, [1, 2, 3]), sel)
+  })
+
+  it('returns the same instance for an empty selection', () => {
+    const sel = new Set<number>()
+    assert.equal(pruneToVisible(sel, [1, 2]), sel)
+  })
+
+  it('empties the selection when the list no longer contains any of it', () => {
+    assert.equal(pruneToVisible(new Set([9, 10]), [1, 2]).size, 0)
+  })
+
+  it('accepts a Set or any iterable of visible ids', () => {
+    assert.equal(pruneToVisible(new Set([1]), new Set([1])).size, 1)
+    assert.equal(pruneToVisible(new Set([1]), [1]).size, 1)
   })
 })

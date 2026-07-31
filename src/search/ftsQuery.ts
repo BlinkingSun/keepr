@@ -60,10 +60,15 @@ export function buildFtsMatch(userQuery: string): FtsMatchBuild {
       core = core.slice(1, -1)
     }
 
+    // Bare `"` / `""` / quote-only tokens: nothing to search for — skip.
+    // Emitting them as phrases either errors or matches nothing useful.
+    if (core.replace(/"/g, '').length === 0) {
+      continue
+    }
+
     // FTS5 phrase literal: double any embedded quotes.
     const escaped = core.replace(/"/g, '""')
     if (escaped.length === 0) {
-      // e.g. user typed `""` — skip; do not emit an empty phrase that can error.
       continue
     }
 

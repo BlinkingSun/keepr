@@ -88,3 +88,23 @@ export function applyClick(
     anchorIndex: clickedIndex,
   }
 }
+
+/**
+ * Drop any selected id that is no longer visible.
+ *
+ * A selection outlives the list it was made against: switching folder or filter,
+ * or a background refresh after OCR or an import, can remove rows while ids stay
+ * in the set. The audit found the consequences — a status bar claiming "3
+ * selected" for invisible rows, and worse, a bulk operation acting on ids the
+ * user cannot see and did not mean to touch.
+ *
+ * Returns the SAME set instance when nothing changed, so callers can use it
+ * directly in a React state setter without causing a re-render loop.
+ */
+export function pruneToVisible(selected: ReadonlySet<number>, visibleIds: Iterable<number>): Set<number> {
+  const live = visibleIds instanceof Set ? visibleIds : new Set(visibleIds)
+  if (selected.size === 0) return selected as Set<number>
+  const kept: number[] = []
+  for (const id of selected) if (live.has(id)) kept.push(id)
+  return kept.length === selected.size ? (selected as Set<number>) : new Set(kept)
+}

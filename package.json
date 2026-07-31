@@ -28,7 +28,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sharp": "0.34.1",
-    "tesseract.js": "^5.1.1"
+    "tesseract.js": "^5.1.1",
+    "@napi-rs/canvas": "0.1.100"
   },
   "devDependencies": {
     "@electron/rebuild": "3.7.2",
@@ -52,7 +53,8 @@
       "**/node_modules/better-sqlite3/**",
       "**/node_modules/tesseract.js/**",
       "**/node_modules/tesseract.js-core/**",
-      "resources/tessdata/**"
+      "resources/tessdata/**",
+      "**/node_modules/@napi-rs/**"
     ],
     "files": [
       "dist/**",
