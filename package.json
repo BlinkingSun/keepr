@@ -89,7 +89,8 @@
         }
       ],
       "category": "public.app-category.finance",
-      "identity": null
+      "identity": null,
+      "icon": "build/icon.icns"
     },
     "extraMetadata": {
       "main": "dist/main/index.js"
