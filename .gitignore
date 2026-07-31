@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.log
 resources/tessdata/*.traineddata
+release/

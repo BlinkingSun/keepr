@@ -7,7 +7,6 @@
   "author": "Joshua Roberts",
   "license": "MIT",
   "main": "dist/main/index.js",
-  "_pinning_note": "ABI-critical natives (electron, better-sqlite3, sharp, @electron/rebuild) are pinned EXACTLY, no carets. A minor bump in any of them changes NODE_MODULE_VERSION expectations and produces the 'fixed itself after a rebuild' class of non-reproducible failure. Do not add ^ or ~ to these four.",
   "scripts": {
     "build": "node scripts/build.mjs && vite build",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
@@ -18,7 +17,8 @@
     "test": "npm run rebuild:node --silent && node --experimental-strip-types --test src/db/repo/__tests__/*.ts src/ocr/__tests__/*.ts src/store/__tests__/*.ts",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
-    "test:schema": "npm run rebuild:node --silent && node --experimental-strip-types spikes/schema-verify.ts"
+    "test:schema": "npm run rebuild:node --silent && node --experimental-strip-types spikes/schema-verify.ts",
+    "package:mac": "npm run rebuild:electron --silent && npm run build && electron-builder --mac --arm64"
   },
   "dependencies": {
     "better-sqlite3": "11.8.1",
@@ -38,6 +38,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "electron": "33.4.11",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1",
     "typescript": "^5.7.3",
     "vite": "^8.2.0"
@@ -53,10 +54,11 @@
       "**/node_modules/tesseract.js-core/**",
       "resources/tessdata/**"
     ],
-    "_asarUnpack_note": "sharp ships platform packages under @img and loads libvips from disk; better-sqlite3 is a classic .node addon; tesseract.js needs its wasm core and traineddata reachable as real files. All of these fail if left inside the asar archive. The app would launch and then die on first import.",
     "files": [
       "dist/**",
-      "package.json"
+      "package.json",
+      "!node_modules/**/test/**",
+      "!node_modules/**/*.md"
     ],
     "extraResources": [
       {
@@ -72,6 +74,25 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.finance",
+      "identity": null
+    },
+    "extraMetadata": {
+      "main": "dist/main/index.js"
     }
   }
 }
