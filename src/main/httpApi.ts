@@ -9,11 +9,16 @@
  * Bound to 127.0.0.1 only. This is a local tool with no authentication; binding
  * it to a routable interface would expose the whole library to the network.
  *
- * Routes belonging to lanes that have not landed yet return 501 with the lane
- * named. That distinction matters to whoever is testing: "not built" and "broken"
- * demand completely different responses, and a 500 hides which one it is.
+ * Every route here is now WIRED to its lane. Earlier the wave-4 routes returned
+ * 501 naming the lane, which was honest but meant the program could not actually
+ * do its job: the modules existed and nothing could reach them.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { importFiles } from '../ingest/index.ts'
+import { search, missingKeyData } from '../search/index.ts'
+import { splitReceipt, combineItems, separateItem } from '../splitting/index.ts'
+import { exportCsv, exportXlsx, exportPdf } from '../export/index.ts'
+import { backup, restore, archive, emptyTrash } from '../maintenance/index.ts'
 import type { AppContext } from './context.ts'
 import { checkIntegrity } from './db.ts'
 
@@ -31,15 +36,6 @@ type Handler = (
   /** Raw :id / :name segment, for string keys like job uuids and list names. */
   raw?: string,
 ) => Promise<{ status?: number; body: unknown }>
-
-const notImplemented = (lane: string, what: string): Handler => async () => ({
-  status: 501,
-  body: {
-    error: 'not_implemented',
-    lane,
-    detail: `${what} arrives with Lane ${lane}. This endpoint is declared but not yet built — it is not failing.`,
-  },
-})
 
 const num = (v: string | null): number | undefined => {
   if (v == null || v === '') return undefined
@@ -126,18 +122,90 @@ const routes: Record<string, Handler> = {
     return { body: { values: all } }
   },
 
-  // Declared, not yet built. Named by lane so a tester knows what to expect.
-  'POST /import': notImplemented('C', 'Import and the Inbox queue'),
-  'GET /search': notImplemented('H', 'Search'),
-  'GET /search/missing': notImplemented('H', 'Find-missing-key-data'),
-  'POST /items/:id/split': notImplemented('I', 'Receipt splitting'),
-  'POST /items/combine': notImplemented('I', 'Combine'),
-  'POST /items/:id/separate': notImplemented('I', 'Separate'),
-  'POST /export/csv': notImplemented('J', 'CSV export'),
-  'POST /export/xlsx': notImplemented('J', 'Excel export'),
-  'POST /export/pdf': notImplemented('J', 'Searchable PDF export'),
-  'POST /backup': notImplemented('K', 'Backup'),
-  'POST /restore': notImplemented('K', 'Restore'),
+  // ---- wave 4, wired ------------------------------------------------------
+  'POST /import': async (ctx, _r, _u, body) => {
+    if (!Array.isArray(body?.paths) || body.paths.length === 0) {
+      return { status: 400, body: { error: 'paths[] required' } }
+    }
+    const res = await importFiles(ctx.ingest(), {
+      paths: body.paths,
+      ...(body.targetFolderId === undefined ? {} : { targetFolderId: body.targetFolderId }),
+      ...(body.toInbox === undefined ? {} : { toInbox: body.toInbox }),
+      ...(body.awaitOcr === undefined ? {} : { awaitOcr: body.awaitOcr }),
+    })
+    return { status: 201, body: res }
+  },
+
+  'GET /search': async (ctx, _r, url) => {
+    const p = url.searchParams
+    const missing = p.get('missing')
+    return {
+      body: search(ctx.db, {
+        ...(p.get('q') ? { q: p.get('q')! } : {}),
+        ...(num(p.get('folder')) === undefined ? {} : { folderId: num(p.get('folder')) }),
+        ...(bool(p.get('subfolders')) === undefined ? {} : { includeSubfolders: bool(p.get('subfolders')) }),
+        ...(p.get('type') ? { type: p.get('type') as never } : {}),
+        ...(num(p.get('vendor')) === undefined ? {} : { vendorId: num(p.get('vendor')) }),
+        ...(num(p.get('category')) === undefined ? {} : { categoryId: num(p.get('category')) }),
+        ...(p.get('dateFrom') ? { dateFrom: p.get('dateFrom') as never } : {}),
+        ...(p.get('dateTo') ? { dateTo: p.get('dateTo') as never } : {}),
+        ...(num(p.get('amountMin')) === undefined ? {} : { amountMinMinor: num(p.get('amountMin')) as never }),
+        ...(num(p.get('amountMax')) === undefined ? {} : { amountMaxMinor: num(p.get('amountMax')) as never }),
+        ...(missing ? { missing: missing.split(',') as never } : {}),
+        ...(bool(p.get('includeTrashed')) === undefined ? {} : { includeTrashed: bool(p.get('includeTrashed')) }),
+        ...(num(p.get('limit')) === undefined ? {} : { limit: num(p.get('limit')) }),
+        ...(num(p.get('offset')) === undefined ? {} : { offset: num(p.get('offset')) }),
+      }),
+    }
+  },
+
+  'GET /search/missing': async (ctx, _r, url) => ({
+    body: { rows: missingKeyData(ctx.db, num(url.searchParams.get('folder'))) },
+  }),
+
+  'POST /items/:id/split': async (ctx, _r, _u, body, id) => {
+    if (!Array.isArray(body?.parts)) return { status: 400, body: { error: 'parts[] required' } }
+    return { body: splitReceipt(ctx.db, id!, body.parts) }
+  },
+  'POST /items/combine': async (ctx, _r, _u, body) => {
+    if (!Array.isArray(body?.ids) || body.ids.length < 2) {
+      return { status: 400, body: { error: 'ids[] with at least two items required' } }
+    }
+    return { body: combineItems(ctx.db, body.ids) }
+  },
+  'POST /items/:id/separate': async (ctx, _r, _u, _b, id) => ({ body: separateItem(ctx.db, id!) }),
+
+  'POST /export/csv': async (ctx, _r, _u, body) => exportRoute(ctx, body, 'csv'),
+  'POST /export/xlsx': async (ctx, _r, _u, body) => exportRoute(ctx, body, 'xlsx'),
+  'POST /export/pdf': async (ctx, _r, _u, body) => exportRoute(ctx, body, 'pdf'),
+
+  'POST /backup': async (ctx, _r, _u, body) => ({ body: backup(ctx.maintenance(), body?.destPath) }),
+  'POST /restore': async (ctx, _r, _u, body) => {
+    if (!body?.srcPath) return { status: 400, body: { error: 'srcPath required' } }
+    const res = await restore(ctx.maintenance(), body.srcPath)
+    return { status: res.ok ? 200 : 422, body: res }
+  },
+  'POST /archive': async (ctx, _r, _u, body) => {
+    if (!body?.cutoff) return { status: 400, body: { error: 'cutoff (YYYY-MM-DD) required' } }
+    return { body: archive(ctx.maintenance(), body.cutoff, body.destPath) }
+  },
+  'POST /trash/empty': async (ctx) => ({ body: emptyTrash(ctx.maintenance()) }),
+}
+
+/** Shared by the three export routes: they differ only in the writer. */
+async function exportRoute(
+  ctx: AppContext,
+  body: any,
+  format: 'csv' | 'xlsx' | 'pdf',
+): Promise<{ status?: number; body: unknown }> {
+  if (!body?.destPath) return { status: 400, body: { error: 'destPath required' } }
+  const req = { ...body, format }
+  const exportCtx = { jobs: ctx.jobs, fileStore: ctx.fileStore, libraryRoot: ctx.libraryRoot }
+  const path =
+    format === 'csv' ? await exportCsv(ctx.db, req, exportCtx)
+    : format === 'xlsx' ? await exportXlsx(ctx.db, req, exportCtx)
+    : await exportPdf(ctx.db, req, exportCtx)
+  return { body: { path, format } }
 }
 
 function matchRoute(method: string, pathname: string): { handler: Handler; id?: string; tail?: string } | null {

@@ -11,6 +11,10 @@ import type Database from 'better-sqlite3'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { createRepositories, type Repositories } from '../db/repo/index.ts'
+import type { IngestDeps } from '../ingest/types.ts'
+import type { MaintenanceContext } from '../maintenance/types.ts'
+import { createOcrProvider } from '../ocr/provider.ts'
+import { createImagePool } from '../workers/imagePool.ts'
 import { DiskFileStore } from '../store/fileStore.ts'
 import type { LibraryRelPath } from '../shared/types.ts'
 import { checkIntegrity, ensureSystemFolders, openLibrary } from './db.ts'
@@ -26,6 +30,17 @@ export interface AppContext {
   schemaVersion: number
   inboxId: number
   trashId: number
+  /**
+   * Ingest dependencies, created on FIRST USE rather than at startup.
+   *
+   * The OCR scheduler spawns worker threads and loads a 5 MB language model; the
+   * image pool holds libvips workers. Paying that on every launch would slow the
+   * window down for a user who only wants to look at last month's totals. The
+   * first import absorbs it instead.
+   */
+  ingest(): IngestDeps
+  /** Context shape the maintenance lane expects. */
+  maintenance(): MaintenanceContext
   close(): void
 }
 
@@ -103,6 +118,31 @@ export function createContext(opts: CreateContextOptions): AppContext {
 
   const repos = createRepositories({ db, fileStore })
 
+  // Lazily constructed and then reused. Building these twice would create a
+  // second OCR scheduler and a second image pool, which is exactly the nested
+  // worker-pool problem the plan forbids.
+  let ingestDeps: IngestDeps | null = null
+  const ingest = (): IngestDeps => {
+    if (!ingestDeps) {
+      ingestDeps = {
+        repos,
+        fileStore,
+        jobs,
+        ocr: createOcrProvider(),
+        imagePool: createImagePool(),
+        // Deliberately small: tesseract.js runs its own threads underneath, so a
+        // high number here multiplies WASM heaps rather than throughput.
+        ocrConcurrency: 2,
+      }
+    }
+    return ingestDeps
+  }
+
+  const maintenance = (): MaintenanceContext => ({
+    db, dbPath, libraryRoot: opts.libraryRoot, fileStore,
+    close: () => { try { db.pragma('wal_checkpoint(TRUNCATE)') } catch { /* ignore */ } db.close() },
+  })
+
   return {
     db,
     repos,
@@ -113,7 +153,14 @@ export function createContext(opts: CreateContextOptions): AppContext {
     schemaVersion,
     inboxId,
     trashId,
+    ingest,
+    maintenance,
     close() {
+      // Dispose OCR workers first: they are separate threads and would otherwise
+      // keep the process alive after the window closes.
+      if (ingestDeps) {
+        try { void ingestDeps.ocr.dispose() } catch { /* shutting down anyway */ }
+      }
       try { db.pragma('wal_checkpoint(TRUNCATE)') } catch { /* closing anyway */ }
       db.close()
     },
