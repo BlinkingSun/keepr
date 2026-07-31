@@ -85,3 +85,8 @@
 .status-right { display: flex; gap: var(--sp-5); align-items: center; }
 .stat strong { color: var(--text-primary); margin-left: var(--sp-2); }
 .stat-quiet { color: var(--text-muted); }
+
+/* Statuses referenced by App.tsx. */
+.titlebar-warn { color: var(--danger); font-size: var(--fs-sm); font-weight: 600; }
+/* An incomplete sum IS a warning: the number on screen is not the whole truth. */
+.stat-warn { color: var(--warn); }

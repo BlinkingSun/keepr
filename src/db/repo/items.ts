@@ -24,12 +24,16 @@ import type {
   PatchResult,
 } from '../../shared/ipc.ts'
 import { ListsRepo, type ListName } from './lists.ts'
+import { LOW_CONFIDENCE_THRESHOLD as SHARED_LOW_CONFIDENCE_THRESHOLD } from '../../shared/types.ts'
 import { parseMoneyField } from './money.ts'
 import { CustomFieldsRepo } from './customFields.ts'
 import { PagesRepo } from './pages.ts'
 import type { Database } from './types.ts'
 
-const LOW_CONFIDENCE_THRESHOLD = 0.75
+// Single source of truth in the contract — the repo and the viewer previously
+// disagreed (0.75 vs 0.85), so a field at 0.80 was flagged in one place and not
+// the other.
+const LOW_CONFIDENCE_THRESHOLD = SHARED_LOW_CONFIDENCE_THRESHOLD
 
 const FIELD_TO_EXTRACTION: Partial<Record<keyof ItemPatch, ExtractableField>> = {
   txnDate: 'txnDate',

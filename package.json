@@ -14,7 +14,7 @@
     "abi:check:node": "node scripts/abi-check.mjs",
     "serve": "npm run rebuild:node --silent && node --experimental-strip-types src/main/serve.ts",
     "start": "npm run rebuild:electron --silent && npm run build && electron dist/main/index.js",
-    "test": "npm run rebuild:node --silent && node --experimental-strip-types --test src/db/repo/__tests__/*.ts src/ocr/__tests__/*.ts src/store/__tests__/*.ts",
+    "test": "npm run rebuild:node --silent && node --experimental-strip-types --test \"src/**/__tests__/*.ts\"",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "test:schema": "npm run rebuild:node --silent && node --experimental-strip-types spikes/schema-verify.ts",

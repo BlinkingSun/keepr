@@ -1,18 +1,23 @@
 /**
  * App shell — Lane 0, owned by the orchestrator.
  *
- * Composes the three-pane frame the user approved at the UI gate. Lanes E, F and
- * G fill the panes; this file owns the frame and the shared state, and it is the
- * ONE place that composes them. That single-writer rule is why three UI lanes can
- * be built in parallel without fighting over a layout file.
+ * Composes the three panes the user approved at the UI gate. This is the ONLY
+ * file that mounts panels and the only one that talks to the bridge; the panels
+ * are pure presentation over props, which is what let lanes E, F and G be built
+ * in parallel without fighting over a layout file.
  *
- * Panels receive data and callbacks as props. They do not call the bridge
- * directly, so a panel stays testable without Electron.
+ * State that more than one pane needs lives here: selection, folder, filter,
+ * sort, columns. A panel never reaches for another panel's state.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Folder } from '../../shared/types.ts'
-import type { FilterTotals, GridRow, ListRequest } from '../../shared/ipc.ts'
-import { hasBridge, invoke } from '../bridge.ts'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Folder, ResolvedPage, Rotation } from '../../shared/types.ts'
+import type {
+  FilterTotals, GridRow, ItemDetail, ItemPatch, ListRequest, PatchResult,
+} from '../../shared/ipc.ts'
+import { hasBridge, invoke, on } from '../bridge.ts'
+import { NavPanel } from '../nav/index.ts'
+import { GridPanel, DEFAULT_COLUMNS, formatMoney, type ColumnState, type SortSpec } from '../grid/index.ts'
+import { ViewerPanel } from '../viewer/index.ts'
 
 type ViewMode = 'grid' | 'thumbnail' | 'details'
 type SmartFilter = NonNullable<ListRequest['smartFilter']>
@@ -25,35 +30,37 @@ interface Health {
   nativeDetail: string[]
 }
 
-/** Money for display. Minor units in, never a float anywhere in the path. */
-function fmtMoney(minor: number | null | undefined, currency = 'USD'): string {
-  if (minor == null) return '—'
-  const neg = minor < 0
-  const abs = Math.abs(minor)
-  const s = `${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
-  const withSep = s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : ''
-  return `${neg ? '-' : ''}${sym}${withSep}`
-}
-
 export function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [folders, setFolders] = useState<Folder[]>([])
   const [rows, setRows] = useState<GridRow[]>([])
   const [totals, setTotals] = useState<FilterTotals | null>(null)
+  const [loading, setLoading] = useState(false)
   const [selectedFolder, setSelectedFolder] = useState<number | null>(null)
   const [smartFilter, setSmartFilter] = useState<SmartFilter>('all')
   const [view, setView] = useState<ViewMode>('grid')
   const [inboxCount, setInboxCount] = useState(0)
-  const [selectedItem, setSelectedItem] = useState<number | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [openItemId, setOpenItemId] = useState<number | null>(null)
+  const [detail, setDetail] = useState<ItemDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [activePage, setActivePage] = useState(0)
+  const [sort, setSort] = useState<SortSpec[]>([{ column: 'txnDate', dir: 'desc' }])
+  const [columns, setColumns] = useState<ColumnState[]>(DEFAULT_COLUMNS)
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
   const offline = !hasBridge()
+  // Guards against a slow response for an abandoned filter overwriting the
+  // current one — the same generation problem the OCR path has.
+  const reqSeq = useRef(0)
 
   const refresh = useCallback(async () => {
     if (offline) return
+    const seq = ++reqSeq.current
+    setLoading(true)
     try {
-      const req: ListRequest = { smartFilter }
+      const req: ListRequest = { smartFilter, sort }
       if (selectedFolder != null) {
         req.folderId = selectedFolder
         req.includeSubfolders = true
@@ -62,69 +69,98 @@ export function App() {
         invoke('item:list', req),
         invoke('ingest:inboxCount', undefined),
       ])
+      if (seq !== reqSeq.current) return // a newer request already won
       setRows(res.rows)
       setTotals(res.totals)
       setInboxCount(inbox.count)
       setError(null)
     } catch (e) {
-      setError((e as Error).message)
+      if (seq === reqSeq.current) setError((e as Error).message)
+    } finally {
+      if (seq === reqSeq.current) setLoading(false)
     }
-  }, [offline, selectedFolder, smartFilter])
+  }, [offline, selectedFolder, smartFilter, sort])
+
+  const loadFolders = useCallback(async () => {
+    if (offline) return
+    try { setFolders(await invoke('folder:list', undefined)) }
+    catch (e) { setError((e as Error).message) }
+  }, [offline])
 
   useEffect(() => {
     if (offline) return
     void (async () => {
-      try {
-        const [h, f] = await Promise.all([invoke('app:health', undefined), invoke('folder:list', undefined)])
-        setHealth(h as Health)
-        setFolders(f)
-      } catch (e) {
-        setError((e as Error).message)
-      }
+      try { setHealth((await invoke('app:health', undefined)) as Health) }
+      catch (e) { setError((e as Error).message) }
     })()
-  }, [offline])
+    void loadFolders()
+  }, [offline, loadFolders])
 
   useEffect(() => { void refresh() }, [refresh])
 
-  const inbox = folders.find((f) => f.kind === 'inbox')
-  const userFolders = useMemo(() => folders.filter((f) => f.kind === 'user'), [folders])
-  const tree = useMemo(() => {
-    // Depth-first so nesting reads correctly in the nav pane.
-    const byParent = new Map<number | null, Folder[]>()
-    for (const f of userFolders) {
-      const k = f.parentId ?? null
-      if (!byParent.has(k)) byParent.set(k, [])
-      byParent.get(k)!.push(f)
-    }
-    const out: Array<{ folder: Folder; depth: number }> = []
-    const walk = (parent: number | null, depth: number) => {
-      for (const f of byParent.get(parent) ?? []) {
-        out.push({ folder: f, depth })
-        walk(f.id, depth + 1)
-      }
-    }
-    walk(null, 0)
-    return out
-  }, [userFolders])
+  // Main-process pushes: OCR finishing or an import landing must update the grid
+  // without the user having to click something.
+  useEffect(() => {
+    if (offline) return
+    const offItem = on('item:changed', () => { void refresh() })
+    const offOcr = on('ocr:pageDone', () => { void refresh() })
+    return () => { offItem(); offOcr() }
+  }, [offline, refresh])
 
-  const primaryTotals = totals?.byCurrency[0]
+  useEffect(() => {
+    if (offline || openItemId == null) { setDetail(null); return }
+    setDetailLoading(true)
+    void (async () => {
+      try {
+        setDetail(await invoke('item:detail', { id: openItemId }))
+        setActivePage(0)
+      } catch (e) { setError((e as Error).message) }
+      finally { setDetailLoading(false) }
+    })()
+  }, [offline, openItemId])
+
+  const onPatch = useCallback(async (itemId: number, patch: ItemPatch): Promise<PatchResult> => {
+    const res = await invoke('item:patch', { id: itemId, patch })
+    if (res.ok) {
+      // A patch can create a list value, change a total, or alter a folder — all
+      // of which move numbers in the status bar, so re-read rather than guess.
+      void refresh()
+      if (res.createdListValues.length) void loadFolders()
+      if (openItemId === itemId) setDetail(await invoke('item:detail', { id: itemId }))
+    }
+    return res
+  }, [refresh, loadFolders, openItemId])
+
+  const inbox = useMemo(() => folders.find((f) => f.kind === 'inbox') ?? null, [folders])
+
+  const pageSrc = useCallback((page: ResolvedPage): string => {
+    const root = health?.libraryRoot ?? ''
+    // Electron serves local files through the file protocol; the renderer never
+    // joins a path itself beyond this one display concern.
+    const sep = root.includes('\\') ? '\\' : '/'
+    return `file://${encodeURI(`${root}${sep}${page.fileRelPath}`.replace(/\\/g, '/'))}`
+  }, [health])
+
+  const primary = totals?.byCurrency[0]
+  const showDetails = view === 'details' && detail != null
 
   return (
     <div className="app">
       <header className="titlebar">
         <span className="brand">KeepR</span>
         <span className="titlebar-sub">
-          {health ? `library ${health.libraryRoot}` : offline ? 'renderer preview — no bridge' : 'connecting'}
+          {health ? health.libraryRoot : offline ? 'renderer preview — no bridge' : 'connecting'}
         </span>
+        {health && !health.nativeOk && (
+          <span className="titlebar-warn" title={health.nativeDetail.join('; ')}>
+            native check failed
+          </span>
+        )}
         <div className="seg" role="tablist" aria-label="View">
           {(['grid', 'thumbnail', 'details'] as ViewMode[]).map((v) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={view === v}
+            <button key={v} role="tab" aria-selected={view === v}
               className={view === v ? 'seg-item seg-active' : 'seg-item'}
-              onClick={() => setView(v)}
-            >
+              onClick={() => setView(v)}>
               {v === 'grid' ? 'Grid' : v === 'thumbnail' ? 'Thumbnail' : 'Details'}
             </button>
           ))}
@@ -132,52 +168,31 @@ export function App() {
       </header>
 
       <div className="body">
-        {/* Lane E fills this pane. */}
-        <nav className="nav" aria-label="Library">
-          <button
-            className={smartFilter === 'inbox' ? 'nav-row nav-selected' : 'nav-row'}
-            onClick={() => { setSmartFilter('inbox'); setSelectedFolder(null) }}
-          >
-            <span>Inbox</span>
-            {inboxCount > 0 && <span className="badge">{inboxCount}</span>}
-          </button>
+        {/* The navigation pane stays visible in Details view — approved at the gate. */}
+        <NavPanel
+          folders={folders}
+          inboxCount={inboxCount}
+          selectedFolderId={selectedFolder}
+          smartFilter={smartFilter}
+          onSelectFolder={(id) => { setSelectedFolder(id); setSmartFilter('all') }}
+          onSelectSmartFilter={(f) => { setSmartFilter(f); setSelectedFolder(null) }}
+          onCreateFolder={async (parentId, name) => {
+            await invoke('folder:create', { parentId, name }); await loadFolders()
+          }}
+          onRenameFolder={async (id, name) => {
+            await invoke('folder:update', { id, patch: { name } }); await loadFolders()
+          }}
+          onMoveFolder={async (id, newParentId) => {
+            await invoke('folder:update', { id, patch: { parentId: newParentId } }); await loadFolders()
+          }}
+          onDropItems={async (itemIds, folderId) => {
+            await invoke('item:bulk', { op: 'move', ids: itemIds, targetFolderId: folderId })
+            setSelectedIds(new Set()); await refresh()
+          }}
+          collapsed={collapsed}
+          onCollapsedChange={setCollapsed}
+        />
 
-          <div className="nav-head">Cabinet</div>
-          {tree.length === 0 && <div className="nav-empty">No folders yet</div>}
-          {tree.map(({ folder, depth }) => (
-            <button
-              key={folder.id}
-              className={selectedFolder === folder.id ? 'nav-row nav-selected' : 'nav-row'}
-              style={{ paddingLeft: `calc(var(--sp-4) + ${depth * 12}px)` }}
-              onClick={() => { setSelectedFolder(folder.id); setSmartFilter('all') }}
-            >
-              {folder.name}
-            </button>
-          ))}
-
-          <div className="nav-head">Smart Filters</div>
-          {([['all', 'View All'], ['recent', 'Recently Added'], ['unreviewed', 'Unreviewed']] as const).map(
-            ([key, label]) => (
-              <button
-                key={key}
-                className={smartFilter === key && selectedFolder == null ? 'nav-row nav-selected' : 'nav-row'}
-                onClick={() => { setSmartFilter(key); setSelectedFolder(null) }}
-              >
-                {label}
-              </button>
-            ),
-          )}
-
-          <div className="nav-spacer" />
-          <button
-            className={smartFilter === 'trash' ? 'nav-row nav-selected' : 'nav-row'}
-            onClick={() => { setSmartFilter('trash'); setSelectedFolder(null) }}
-          >
-            Trash
-          </button>
-        </nav>
-
-        {/* Lane F fills this pane. */}
         <main className="content">
           {error && <div className="banner banner-danger">{error}</div>}
           {offline && (
@@ -185,90 +200,120 @@ export function App() {
               Renderer preview: no preload bridge, so no library is attached.
             </div>
           )}
-          <div className="grid">
-            <div className="grid-head">
-              <span className="c-num">#</span>
-              <span className="c-date">Date</span>
-              <span className="c-vendor">Vendor</span>
-              <span className="c-cat">Category</span>
-              <span className="c-pay">Payment</span>
-              <span className="c-tax num">Tax</span>
-              <span className="c-total num">Total</span>
-            </div>
-            <div className="grid-body">
-              {rows.length === 0 && (
-                <div className="grid-empty">
-                  <p>No items in this view.</p>
-                  <p className="muted">
-                    Import arrives with Lane C. The library, schema and totals path are live.
-                  </p>
-                </div>
-              )}
-              {rows.map((r, i) => (
-                <div
-                  key={r.itemId}
-                  className={selectedItem === r.itemId ? 'row row-selected' : 'row'}
-                  onClick={() => setSelectedItem(r.itemId)}
-                >
-                  <span className="c-num muted">{i + 1}</span>
-                  <span className="c-date">{r.txnDate ?? '—'}</span>
-                  <span className="c-vendor">
-                    {r.vendorName ?? <span className="warn-mark">missing</span>}
-                  </span>
-                  <span className="c-cat">{r.categoryName ?? '—'}</span>
-                  <span className="c-pay">{r.paymentTypeName ?? '—'}</span>
-                  <span className="c-tax num">{fmtMoney(r.taxTotalMinor, r.currency)}</span>
-                  <span className="c-total num">{fmtMoney(r.totalMinor, r.currency)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {showDetails ? (
+            <ViewerPanel
+              variant="details"
+              detail={detail}
+              loading={detailLoading}
+              activePageIndex={activePage}
+              onActivePageChange={setActivePage}
+              pageSrc={pageSrc}
+              onPatch={onPatch}
+              onRotate={async (pageId, rotation: Rotation) => {
+                await invoke('page:rotate', { pageId, rotation })
+                if (openItemId != null) setDetail(await invoke('item:detail', { id: openItemId }))
+              }}
+              onReorderPages={async (itemId, order) => {
+                await invoke('page:reorder', { itemId, pageIdsInOrder: order })
+                setDetail(await invoke('item:detail', { id: itemId }))
+              }}
+              onDeletePage={async (pageId) => {
+                await invoke('page:delete', { pageId })
+                if (openItemId != null) setDetail(await invoke('item:detail', { id: openItemId }))
+              }}
+              onAssignRegion={async (pageId, field, box) =>
+                invoke('page:assignRegion', { pageId, field, x: box.x, y: box.y, w: box.w, h: box.h })
+              }
+            />
+          ) : (
+            <GridPanel
+              rows={rows}
+              totals={totals}
+              loading={loading}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              onOpenItem={(id) => { setOpenItemId(id); setView('details') }}
+              onPatch={onPatch}
+              sort={sort}
+              onSortChange={setSort}
+              columns={columns}
+              onColumnsChange={setColumns}
+              density="compact"
+            />
+          )}
         </main>
 
-        {/* Lane G fills this pane. */}
-        <aside className="inspector" aria-label="Item details">
-          <div className="pane-head">Receipt Details</div>
-          {selectedItem == null ? (
-            <div className="inspector-empty muted">Select an item</div>
-          ) : (
-            <div className="inspector-body muted">Details pane arrives with Lane G.</div>
-          )}
-        </aside>
+        {!showDetails && (
+          <aside className="inspector" aria-label="Item details">
+            <div className="pane-head">Receipt Details</div>
+            {openItemId == null ? (
+              <div className="inspector-empty muted">Select an item</div>
+            ) : (
+              <ViewerPanel
+                variant="inspector"
+                detail={detail}
+                loading={detailLoading}
+                activePageIndex={activePage}
+                onActivePageChange={setActivePage}
+                pageSrc={pageSrc}
+                onPatch={onPatch}
+                onRotate={async (pageId, rotation: Rotation) => {
+                  await invoke('page:rotate', { pageId, rotation })
+                  if (openItemId != null) setDetail(await invoke('item:detail', { id: openItemId }))
+                }}
+                onReorderPages={async (itemId, order) => {
+                  await invoke('page:reorder', { itemId, pageIdsInOrder: order })
+                  setDetail(await invoke('item:detail', { id: itemId }))
+                }}
+                onDeletePage={async (pageId) => {
+                  await invoke('page:delete', { pageId })
+                  if (openItemId != null) setDetail(await invoke('item:detail', { id: openItemId }))
+                }}
+                onAssignRegion={async (pageId, field, box) =>
+                  invoke('page:assignRegion', { pageId, field, x: box.x, y: box.y, w: box.w, h: box.h })
+                }
+              />
+            )}
+          </aside>
+        )}
       </div>
 
       <footer className="statusbar">
         <span>
           {rows.length} item{rows.length === 1 ? '' : 's'}
+          {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
           {selectedFolder != null && folders.find((f) => f.id === selectedFolder)
-            ? ` · ${folders.find((f) => f.id === selectedFolder)!.name}`
-            : ''}
+            ? ` · ${folders.find((f) => f.id === selectedFolder)!.name}` : ''}
         </span>
         <span className="status-right">
-          {/*
-            Totals are rendered per-currency. There is deliberately no single
-            blended figure: summing USD and EUR into one number would be a lie
-            with a currency symbol in front of it.
-          */}
+          {/* Per-currency, always. One blended figure across currencies would be a
+              lie with a currency symbol in front of it. */}
           {totals && totals.byCurrency.length > 1 ? (
             totals.byCurrency.map((c) => (
               <span key={c.currency} className="stat">
-                {c.currency} <strong className="num">{fmtMoney(c.totalMinor, c.currency)}</strong>
+                {c.currency} <strong className="num">{formatMoney(c.totalMinor, c.currency)}</strong>
               </span>
             ))
           ) : (
             <>
               <span className="stat">
-                Sum <strong className="num">{fmtMoney(primaryTotals?.totalMinor ?? 0, primaryTotals?.currency)}</strong>
+                Sum <strong className="num">{formatMoney(primary?.totalMinor ?? 0, primary?.currency)}</strong>
               </span>
               <span className="stat">
-                Tax <strong className="num">{fmtMoney(primaryTotals?.taxMinor ?? 0, primaryTotals?.currency)}</strong>
+                Tax <strong className="num">{formatMoney(primary?.taxMinor ?? 0, primary?.currency)}</strong>
               </span>
             </>
           )}
+          {totals?.hasIncompleteAmounts && (
+            <span className="stat stat-warn" title="Some receipts have no amount, so this sum is incomplete">
+              incomplete
+            </span>
+          )}
+          {/* text-secondary, not warn: a queue depth is not a problem. */}
           {totals && totals.unreviewedCount > 0 && (
-            /* text-secondary, not warn: a queue depth is not a problem. */
             <span className="stat stat-quiet">{totals.unreviewedCount} unreviewed</span>
           )}
+          {inbox && inboxCount > 0 && <span className="stat stat-quiet">inbox {inboxCount}</span>}
           {health && <span className="stat stat-quiet">schema v{health.schemaVersion}</span>}
         </span>
       </footer>

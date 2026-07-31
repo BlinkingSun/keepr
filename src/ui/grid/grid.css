@@ -1,0 +1,427 @@
+/**
+ * Grid panel styles — Lane F.
+ * Every colour, spacing and duration comes from tokens.css custom properties.
+ * No hard-coded hex. Dark mode only. No emojis.
+ */
+
+.keepr-grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font: var(--fs-base) / var(--lh-tight) var(--font-ui);
+  position: relative;
+  outline: none;
+}
+
+.keepr-grid[data-density='comfortable'] {
+  --grid-row-h: var(--row-h-comfortable);
+}
+
+.keepr-grid[data-density='compact'] {
+  --grid-row-h: var(--row-h);
+}
+
+/* ---- toolbar / column menu -------------------------------------------- */
+
+.keepr-grid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  height: var(--toolbar-h);
+  padding: 0 var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.keepr-grid-toolbar button {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font: var(--fs-sm) / var(--lh-tight) var(--font-ui);
+  padding: var(--sp-1) var(--sp-3);
+  cursor: pointer;
+}
+
+.keepr-grid-toolbar button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.keepr-grid-col-menu {
+  position: absolute;
+  top: var(--toolbar-h);
+  right: var(--sp-3);
+  z-index: 20;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  padding: var(--sp-2);
+  min-width: 180px;
+}
+
+.keepr-grid-col-menu label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.keepr-grid-col-menu label:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.keepr-grid-col-menu input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font: var(--fs-sm) / var(--lh-tight) var(--font-ui);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+/* ---- header ----------------------------------------------------------- */
+
+.keepr-grid-head {
+  display: flex;
+  align-items: stretch;
+  height: var(--header-h);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.keepr-grid-hcell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border-subtle);
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.keepr-grid-hcell:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.keepr-grid-hcell[data-sorted='true'] {
+  color: var(--accent);
+}
+
+.keepr-grid-sort {
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.keepr-grid-sort-idx {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 1px;
+}
+
+.keepr-grid-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.keepr-grid-resize:hover,
+.keepr-grid-resize[data-active='true'] {
+  background: var(--accent);
+}
+
+/* ---- body / virtualization -------------------------------------------- */
+
+.keepr-grid-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.keepr-grid-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.keepr-grid-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+/* ---- rows ------------------------------------------------------------- */
+
+.keepr-grid-row {
+  display: flex;
+  align-items: stretch;
+  height: var(--grid-row-h);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+  box-sizing: border-box;
+}
+
+.keepr-grid-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Selected: accent fill with dark on-accent text (not white). */
+.keepr-grid-row[data-selected='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.keepr-grid-row[data-selected='true'] .keepr-grid-cell {
+  color: var(--on-accent);
+  border-right-color: color-mix(in srgb, var(--on-accent) 18%, transparent);
+}
+
+.keepr-grid-row[data-selected='true'] .keepr-grid-muted,
+.keepr-grid-row[data-selected='true'] .keepr-grid-badge {
+  color: var(--on-accent);
+}
+
+/* Unreviewed: left accent bar + slightly lifted surface. */
+.keepr-grid-row[data-unreviewed='true']:not([data-selected='true']) {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--bg-panel) 70%, var(--bg-base));
+}
+
+/* Missing key data row marker. */
+.keepr-grid-row[data-missing='true']:not([data-selected='true']) {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.keepr-grid-row[data-unreviewed='true'][data-missing='true']:not([data-selected='true']) {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.keepr-grid-row[data-focused-row='true']:not([data-selected='true']) {
+  background: var(--bg-selected);
+}
+
+/* ---- cells ------------------------------------------------------------ */
+
+.keepr-grid-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-3);
+  border-right: 1px solid var(--border-subtle);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  font-size: var(--fs-base);
+  min-width: 0;
+  position: relative;
+}
+
+.keepr-grid-cell[data-focused='true'] {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.keepr-grid-cell[data-missing='true']:not([data-selected-row='true']) {
+  background: var(--warn-bg);
+}
+
+.keepr-grid-cell-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.keepr-grid-muted {
+  color: var(--text-muted);
+}
+
+.keepr-grid-row[data-selected='true'] .keepr-grid-muted {
+  color: var(--on-accent);
+  opacity: 0.7;
+}
+
+/* Money: tabular nums + right align via .num from tokens.css */
+.keepr-grid-cell.num .keepr-grid-cell-text {
+  text-align: right;
+  width: 100%;
+}
+
+/* ---- badges ----------------------------------------------------------- */
+
+.keepr-grid-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.keepr-grid-badge-warn {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.keepr-grid-row[data-selected='true'] .keepr-grid-badge-warn {
+  color: var(--on-accent);
+  background: color-mix(in srgb, var(--on-accent) 16%, transparent);
+}
+
+.keepr-grid-badge-split {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+.keepr-grid-row[data-selected='true'] .keepr-grid-badge-split {
+  color: var(--on-accent);
+  border-color: color-mix(in srgb, var(--on-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--on-accent) 12%, transparent);
+}
+
+.keepr-grid-missing-mark {
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}
+
+.keepr-grid-row[data-selected='true'] .keepr-grid-missing-mark {
+  color: var(--on-accent);
+}
+
+/* ---- inline editor ---------------------------------------------------- */
+
+.keepr-grid-editor {
+  position: absolute;
+  inset: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  margin: 0;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: var(--fs-base) / var(--lh-tight) var(--font-ui);
+  outline: none;
+  box-shadow: var(--focus-ring);
+  z-index: 3;
+}
+
+.keepr-grid-editor.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.keepr-grid-cell-error {
+  position: absolute;
+  left: var(--sp-2);
+  right: var(--sp-2);
+  bottom: 0;
+  font-size: 10px;
+  color: var(--warn);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* ---- empty / loading -------------------------------------------------- */
+
+.keepr-grid-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7);
+  color: var(--text-secondary);
+  max-width: 28rem;
+}
+
+.keepr-grid-empty h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.keepr-grid-empty p {
+  margin: 0;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--text-secondary);
+}
+
+.keepr-grid-empty .keepr-grid-hint {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.keepr-grid-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-base) 70%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* ---- footer totals strip (optional inside panel) ---------------------- */
+
+.keepr-grid-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  height: var(--statusbar-h);
+  padding: 0 var(--sp-3);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  flex-shrink: 0;
+}
+
+.keepr-grid-footer .num {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.keepr-grid-footer-quiet {
+  color: var(--text-muted);
+}

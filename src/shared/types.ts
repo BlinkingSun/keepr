@@ -330,6 +330,20 @@ export type ExtractableField =
 
 export type ExtractionRecord = Partial<Record<ExtractableField, FieldProvenance>>
 
+/**
+ * Below this confidence, a field is surfaced as uncertain — an amber percentage
+ * badge in the viewer, and a row marker in the grid.
+ *
+ * ONE definition, because two disagreeing thresholds is worse than either value.
+ * The repository and the viewer originally picked 0.75 and 0.85 independently, so
+ * a field at 0.80 was flagged in the details form and silent in the grid. When a
+ * marker appears inconsistently the user stops trusting all of them.
+ *
+ * 0.85 rather than 0.75 because the approved mockup shows a 78% field flagged,
+ * and the mockup is the contract.
+ */
+export const LOW_CONFIDENCE_THRESHOLD = 0.85
+
 /* ===========================================================================
  * Jobs
  * ======================================================================== */
