@@ -1,4 +1,4 @@
-import { normalizeVendorName } from './normalize.ts'
+import { normalizeVendorName, vendorMatchKey } from './normalize.ts'
 import type { Database } from './types.ts'
 
 export type ListName = 'vendor' | 'category' | 'tax_category' | 'payment_type' | 'project'
@@ -97,6 +97,24 @@ export class ListsRepo {
       .prepare(`SELECT id FROM vendor WHERE name = ? LIMIT 1`)
       .get(name) as { id: number } | undefined
     if (byName) return { id: byName.id, created: false }
+
+    // Second pass on the space-insensitive key, so a receipt reading "WAL MART"
+    // resolves to a seeded "Walmart" instead of creating a twin that carries no
+    // default category. Kept as a fallback rather than the primary key, because
+    // collapsing spaces up front would merge merchants that genuinely differ only
+    // by spacing.
+    const loose = vendorMatchKey(name)
+    if (loose) {
+      const byLoose = this.db
+        .prepare(
+          `SELECT id FROM vendor
+             WHERE replace(normalized_name, ' ', '') = ?
+             ORDER BY is_seed DESC, id ASC
+             LIMIT 1`,
+        )
+        .get(loose) as { id: number } | undefined
+      if (byLoose) return { id: byLoose.id, created: false }
+    }
 
     try {
       const result = this.db

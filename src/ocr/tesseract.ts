@@ -21,6 +21,69 @@ import type {
 } from '../shared/types.ts'
 import { resolveTesseractPaths, type TesseractOfflinePaths } from './paths.ts'
 import { createImagePool, type ImagePool } from '../workers/imagePool.ts'
+import sharp from 'sharp'
+
+/**
+ * Below this mean word confidence, the first OCR pass is treated as a failure
+ * worth retrying on an enhanced image rather than a result worth keeping.
+ *
+ * Chosen from a corpus run: a faded, speckled, 5.5-degree-skewed thermal receipt
+ * came back at 0.11 confidence with text so garbled the vendor read ". Lo - Le",
+ * while clean receipts sat at 0.89-0.96. There is a wide gap between those, so
+ * the threshold does not need to be precise.
+ */
+const RETRY_CONFIDENCE = 0.55
+
+/**
+ * Enhancement for a degraded scan, applied only after a poor first pass.
+ *
+ * Order matters. Greyscale first so the histogram stretch is not fighting three
+ * channels. Upscale before sharpening because Tesseract's models are trained
+ * around 300 DPI and interpolating a small blurry image gives the sharpener
+ * something to work with. `normalise` is the big win on faded thermal print: it
+ * stretches a narrow grey band back to full range. Deliberately no threshold or
+ * binarisation — on faint text that deletes strokes instead of recovering them.
+ */
+async function enhanceForOcr(
+  input: string | Buffer,
+  variant: { denoise: boolean; rotate: number; upscale: boolean },
+): Promise<Buffer> {
+  const meta = await sharp(input).metadata()
+  const width = meta.width ?? 0
+  let pipe = sharp(input).greyscale()
+
+  // Denoise BEFORE stretching contrast. The first version of this normalised
+  // first, which amplified scanner speckle into thousands of spurious glyphs: a
+  // faded receipt went from 251 characters at 0.11 confidence to 1304 characters
+  // at 0.17 — more output, no more meaning. A median filter removes the speckle
+  // while leaving strokes intact.
+  if (variant.denoise) pipe = pipe.median(3)
+
+  // Deskew. There is no angle detection here, so a small sweep is tried and the
+  // best-scoring pass wins. Rotation matters more than it looks: Tesseract's line
+  // finder degrades quickly past a couple of degrees, and phone photos and
+  // sheet-feed scanners are rarely straight.
+  if (variant.rotate !== 0) pipe = pipe.rotate(variant.rotate, { background: '#ffffff' })
+
+  if (variant.upscale && width > 0 && width < 1400) {
+    pipe = pipe.resize({ width: Math.round(width * 2), kernel: 'lanczos3' })
+  }
+  return pipe.normalise().sharpen({ sigma: 1.0 }).png().toBuffer()
+}
+
+/**
+ * Enhancement attempts, cheapest first, applied only after a poor first pass.
+ * Bounded on purpose — this runs per page during an import, and an unbounded
+ * search would turn a slow scan into a hang.
+ */
+const ENHANCE_VARIANTS: Array<{ denoise: boolean; rotate: number; upscale: boolean }> = [
+  { denoise: true, rotate: 0, upscale: true },
+  { denoise: true, rotate: 0, upscale: false },
+  { denoise: true, rotate: -5, upscale: true },
+  { denoise: true, rotate: 5, upscale: true },
+  { denoise: true, rotate: -2.5, upscale: true },
+  { denoise: true, rotate: 2.5, upscale: true },
+]
 
 const require = createRequire(import.meta.url)
 
@@ -121,6 +184,48 @@ export class TesseractOcrProvider implements OcrProvider {
 
   async ocrPage(input: PageImageRef, opts?: OcrOptions): Promise<OcrResult> {
     if (this.disposed) throw new Error('TesseractOcrProvider disposed')
+
+    // Resolve the page to actual image bytes/path once, so a retry does not
+    // rasterize the same PDF page twice.
+    let image: string | Buffer = input.absPath
+    if (input.kind === 'pdfPage') {
+      if (!this.imagePool) throw new Error('pdfPage OCR requires an imagePool for rasterization')
+      const raster = await this.imagePool.rasterizePdfPage(input.absPath, input.pageIndex, {
+        signal: opts?.signal,
+        dpi: 300,
+      })
+      image = raster.buffer
+    }
+
+    const first = await this.#recognize(image, input.generation, opts)
+    if (first.confidence >= RETRY_CONFIDENCE || opts?.signal?.aborted) return first
+
+    // Poor read. Work through the enhancement variants and keep the best result.
+    // Enhancement helps degraded scans and can mildly hurt clean ones, so it is
+    // never applied unconditionally, and the original always stays in contention.
+    let best = first
+    for (const variant of ENHANCE_VARIANTS) {
+      if (opts?.signal?.aborted) break
+      try {
+        const candidate = await this.#recognize(
+          await enhanceForOcr(image, variant),
+          input.generation,
+          opts,
+        )
+        if (candidate.confidence > best.confidence) {
+          best = { ...candidate, engine: `${candidate.engine}+enhanced` }
+        }
+        // Good enough: stop paying for further variants.
+        if (best.confidence >= RETRY_CONFIDENCE) break
+      } catch {
+        // Best-effort. A failing variant must not lose the result we already have.
+      }
+    }
+    return best
+  }
+
+  async #recognize(image: string | Buffer, generation: number, opts?: OcrOptions): Promise<OcrResult> {
+    if (this.disposed) throw new Error('TesseractOcrProvider disposed')
     const signal = opts?.signal
     if (signal?.aborted) throw abortError()
 
@@ -129,20 +234,6 @@ export class TesseractOcrProvider implements OcrProvider {
     if (!scheduler) throw new Error('scheduler not initialized')
 
     const t0 = Date.now()
-    const generation = input.generation
-
-    let image: string | Buffer = input.kind === 'file' ? input.absPath : input.absPath
-    if (input.kind === 'pdfPage') {
-      if (!this.imagePool) {
-        throw new Error('pdfPage OCR requires an imagePool for rasterization')
-      }
-      const raster = await this.imagePool.rasterizePdfPage(input.absPath, input.pageIndex, {
-        signal,
-        dpi: 300,
-      })
-      image = raster.buffer
-    }
-
     if (signal?.aborted) throw abortError()
 
     // Queue cancellation: wrap the job so an abort before/during rejects

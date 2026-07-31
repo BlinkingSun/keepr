@@ -61,7 +61,10 @@ AUTH: 882911
       total: 4340,
       txnDate: '2026-03-18',
       vendor: 'Shell',
-      paymentType: 'MC',
+      // Canonical name, not the abbreviation. A corpus run surfaced the same card
+      // reported as both 'MC' and 'MASTERCARD', which would create two entries in
+      // the payment-type list for one payment method.
+      paymentType: 'MASTERCARD',
     },
   },
   {
