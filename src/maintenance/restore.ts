@@ -39,6 +39,43 @@ function readManifest(srcPath: string): BackupManifest | null {
 }
 
 /**
+ * Delete a file, tolerating Windows file locks.
+ *
+ * On POSIX an open file can be unlinked and the directory entry disappears
+ * immediately. Windows refuses with EBUSY while any handle remains open, and
+ * SQLite's -shm handle is not always released the instant the connection closes —
+ * the OS may hold it briefly. Restore replaces exactly these files, so a single
+ * unlink attempt is a coin flip on Windows.
+ *
+ * Found by CI on windows-latest; the macOS and Linux runs passed, which is the
+ * whole reason the matrix exists.
+ */
+function removeWithRetry(file: string, attempts = 10): void {
+  if (!existsSync(file)) return
+  for (let i = 0; i < attempts; i++) {
+    try {
+      rmSync(file, { force: true })
+      return
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code
+      // Only these are worth waiting on. Anything else is a real error.
+      if (code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY') throw e
+      // Short synchronous pause: this runs during a restore, not in a hot path,
+      // and the alternative is failing a restore over a lock that clears in
+      // milliseconds.
+      const until = Date.now() + 50
+      while (Date.now() < until) { /* spin */ }
+    }
+  }
+  // Out of attempts. Report the path rather than a bare errno, because the user
+  // needs to know which file another process is holding.
+  throw new Error(
+    `could not remove ${file} after ${attempts} attempts — another process is ` +
+      `holding it open. Close any other KeepR window and try again.`,
+  )
+}
+
+/**
  * Verify a backup package in place (before or without applying).
  * Fails loudly when images are missing or content hashes do not match.
  */
@@ -227,7 +264,7 @@ export async function restore(
 
   // Remove WAL/SHM sidecars so a restored main file is not paired with stale ones.
   for (const side of [`${ctx.dbPath}-wal`, `${ctx.dbPath}-shm`]) {
-    if (existsSync(side)) rmSync(side, { force: true })
+    removeWithRetry(side)
   }
 
   // 3. Replace database and images tree.

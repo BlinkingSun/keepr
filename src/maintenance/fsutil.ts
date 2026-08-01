@@ -97,8 +97,27 @@ export async function ensureDir(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true })
 }
 
+/**
+ * Recursive delete that tolerates Windows file locks.
+ *
+ * Node's rmSync has `maxRetries`, but it only retries on EBUSY/EPERM when
+ * `recursive` is set AND it does not wait long enough for a SQLite -shm handle the
+ * OS has not finished releasing. Restore deletes the images tree next to a database
+ * that was open moments earlier, and on Windows that is a real race — CI on
+ * windows-latest failed here while macOS and Linux passed.
+ */
 export function rmrfSync(target: string): void {
-  if (existsSync(target)) rmSync(target, { recursive: true, force: true })
+  if (!existsSync(target)) return
+  try {
+    rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY') throw e
+    throw new Error(
+      `could not remove ${target} — another process is holding a file inside it ` +
+        `open. Close any other KeepR window and try again.`,
+    )
+  }
 }
 
 export async function rmrf(target: string): Promise<void> {

@@ -383,12 +383,21 @@ async function rasterizePdfPageDirect(
   const { getDocument, GlobalWorkerOptions } = await import(
     'pdfjs-dist/legacy/build/pdf.mjs'
   )
+  // workerSrc must be a file:// URL, not a filesystem path.
+  //
+  // require.resolve returns 'D:\\a\\keepr\\node_modules\\...' on Windows, and
+  // pdfjs hands that to the ESM loader, which rejects it:
+  //   "Only URLs with a scheme in: file, data, and node are supported"
+  // A POSIX absolute path happens to be accepted, so this failed on Windows only —
+  // caught by the CI matrix, not by any amount of local testing on a Mac.
   try {
-    GlobalWorkerOptions.workerSrc = require.resolve(
-      'pdfjs-dist/legacy/build/pdf.worker.mjs',
-    )
+    const workerPath = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs')
+    const { pathToFileURL } = await import('node:url')
+    GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href
   } catch {
-    GlobalWorkerOptions.workerSrc = 'pdf.worker.mjs'
+    // No worker available: pdfjs falls back to running on this thread, which is
+    // what we want anyway rather than a second worker layer.
+    GlobalWorkerOptions.workerSrc = ''
   }
 
   const data = new Uint8Array(await readFile(filePath))
