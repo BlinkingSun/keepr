@@ -256,6 +256,20 @@ export function extractFromStoredPages(
   itemId: number,
   opts: ExtractOptions = {},
 ): ExtractOutcome {
+  // Feed the known-vendor list to the parser when the caller did not supply one.
+  //
+  // This was the whole reason for seeding 87 vendors, and nothing was passing them
+  // in: every import ran the parser's heuristic top-line guess instead of its
+  // known-vendor match. Two consequences, both visible on a corpus run — the
+  // vendor came back as the raw header ("HOME DEPOT #4821") rather than the
+  // canonical name, and its confidence sat at 0.79, under the review threshold, so
+  // 11 of 12 correctly-read receipts were flagged as uncertain.
+  const vendors =
+    opts.vendors ??
+    (deps.repos.db.prepare('SELECT name FROM vendor').all() as Array<{ name: string }>).map(
+      (r) => r.name,
+    )
+  const effectiveOpts: ExtractOptions = { ...opts, vendors }
   const rows = deps.repos.db
     .prepare(
       `SELECT id, ocr_text, ocr_conf, ocr_engine, ocr_words_json, ocr_generation
@@ -295,7 +309,7 @@ export function extractFromStoredPages(
 
   // Prefer first page id for provenance when single-page.
   const pageId = rows.length === 1 ? rows[0]!.id : null
-  return extractItem(deps, itemId, ocrs, { ...opts, pageId })
+  return extractItem(deps, itemId, ocrs, { ...effectiveOpts, pageId })
 }
 
 /* ---------------------------------------------------------------------------

@@ -5,11 +5,22 @@
  */
 
 import { existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { nodeRequire } from '../shared/nodeRequire.ts'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const require = createRequire(import.meta.url)
+// Dual-runtime: import.meta.url is undefined in the CJS bundle Electron loads.
+const require = nodeRequire
+
+/**
+ * This module's directory, in whichever runtime is executing.
+ * __dirname exists in the CJS bundle; import.meta.url exists under ESM.
+ */
+function moduleDir(): string {
+  if (typeof __dirname !== 'undefined') return __dirname
+  const url = typeof import.meta !== 'undefined' ? import.meta.url : undefined
+  return url ? path.dirname(fileURLToPath(url)) : process.cwd()
+}
 
 export interface TesseractOfflinePaths {
   workerPath: string
@@ -51,8 +62,10 @@ export function resolveTesseractPaths(opts?: {
     resourcesPath ? path.join(resourcesPath, 'tessdata') : '',
     path.resolve(cwd, 'resources/tessdata'),
     // When running from dist/, still find repo resources/
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../resources/tessdata'),
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../resources/tessdata'),
+    // moduleDir() rather than import.meta.url directly: in the CJS bundle
+    // import.meta compiles to {} and fileURLToPath(undefined) throws.
+    path.resolve(moduleDir(), '../../resources/tessdata'),
+    path.resolve(moduleDir(), '../../../resources/tessdata'),
   ].filter(Boolean)
 
   const tessdataDir = candidates.find((d) => existsSync(path.join(d, 'eng.traineddata')))

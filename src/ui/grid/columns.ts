@@ -8,12 +8,16 @@ import type { ColumnState } from './types.ts'
 /** Default columns matching the approved mockup (compact spreadsheet). */
 export const DEFAULT_COLUMNS: ColumnState[] = [
   { key: 'rowNum', label: '#', width: 44, visible: true, order: 0 },
-  { key: 'txnDate', label: 'Date', width: 112, visible: true, order: 1 },
-  { key: 'vendorName', label: 'Vendor', width: 160, visible: true, order: 2 },
-  { key: 'categoryName', label: 'Category', width: 120, visible: true, order: 3 },
-  { key: 'paymentTypeName', label: 'Payment', width: 120, visible: true, order: 4 },
-  { key: 'taxTotalMinor', label: 'Tax', width: 88, visible: true, order: 5 },
-  { key: 'totalMinor', label: 'Total', width: 124, visible: true, order: 6 },
+  // Flag column, immediately after the row number. Deliberately at the far left:
+  // the question "did anything come in wrong?" should be answerable by scanning
+  // one narrow column, not by reading every cell of every row.
+  { key: 'flag', label: '', width: 30, visible: true, order: 1 },
+  { key: 'txnDate', label: 'Date', width: 112, visible: true, order: 2 },
+  { key: 'vendorName', label: 'Vendor', width: 160, visible: true, order: 3 },
+  { key: 'categoryName', label: 'Category', width: 120, visible: true, order: 4 },
+  { key: 'paymentTypeName', label: 'Payment', width: 120, visible: true, order: 5 },
+  { key: 'taxTotalMinor', label: 'Tax', width: 88, visible: true, order: 6 },
+  { key: 'totalMinor', label: 'Total', width: 124, visible: true, order: 7 },
 ]
 
 const MIN_COL_WIDTH = 40

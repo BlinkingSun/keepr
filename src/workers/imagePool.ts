@@ -12,9 +12,11 @@
  */
 
 import { cpus } from 'node:os'
-import { createRequire } from 'node:module'
+import { nodeRequire } from '../shared/nodeRequire.ts'
 
-const require = createRequire(import.meta.url)
+// Dual-runtime: import.meta.url is undefined in the CJS bundle Electron loads,
+// and esbuild compiles import.meta to {} so the .url read yields undefined.
+const require = nodeRequire
 
 export type RotationDeg = 0 | 90 | 180 | 270
 
@@ -143,7 +145,9 @@ export function createImagePool(options: ImagePoolOptions = {}): ImagePool {
     }
   }
 
-  const sharp = (): typeof import('sharp') => require('sharp')
+  // The shim returns unknown by design (it can load anything), so the cast is
+  // where this module asserts what it asked for.
+  const sharp = (): typeof import('sharp') => require('sharp') as typeof import('sharp')
 
   return {
     decode(absPath, opts) {

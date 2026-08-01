@@ -20,7 +20,8 @@ export async function openLibraryRoot(): Promise<{ root: string; ctx: AppContext
     libraryRoot: root,
     schemaDir: SCHEMA_DIR,
     skipBackup: true,
-  })
+      skipSeed: true,
+    })
   return { root, ctx }
 }
 

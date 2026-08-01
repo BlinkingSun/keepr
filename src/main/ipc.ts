@@ -101,6 +101,11 @@ export function buildHandlers(ctx: AppContext): Record<string, AnyHandler> {
         return { pageId: id, status: (row?.ocr_status ?? 'pending') as never, confidence: row?.ocr_conf ?? null }
       }),
 
+    'ingest:inboxCount': (c) =>
+      c.db
+        .prepare(`SELECT count(*) count FROM item WHERE folder_id = ? AND trashed_at IS NULL`)
+        .get(c.inboxId) as { count: number },
+
     'search:query': (c, r) => search(c.db, r ?? {}),
     'search:missingKeyData': (c, r) => missingKeyData(c.db, r?.folderId),
 

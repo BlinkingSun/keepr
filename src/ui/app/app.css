@@ -90,3 +90,13 @@
 .titlebar-warn { color: var(--danger); font-size: var(--fs-sm); font-weight: 600; }
 /* An incomplete sum IS a warning: the number on screen is not the whole truth. */
 .stat-warn { color: var(--warn); }
+
+/* Clickable flag summary in the status bar. Two severities kept visually apart:
+   "need entry" means the machine failed, "to check" means verify it. */
+.stat-flag {
+  appearance: none; border: 0; background: transparent; font: inherit;
+  cursor: pointer; padding: 0 var(--sp-2); border-radius: var(--radius-sm);
+}
+.stat-flag:hover { background: var(--bg-hover); }
+.stat-flag-danger { color: var(--danger); font-weight: 600; }
+.stat-flag-warn { color: var(--warn); font-weight: 600; }

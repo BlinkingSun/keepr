@@ -225,6 +225,7 @@ export function App() {
           inboxCount={inboxCount}
           selectedFolderId={selectedFolder}
           smartFilter={smartFilter}
+          needsReviewCount={totals?.needsReviewCount ?? 0}
           onSelectFolder={(id) => changeScope(() => { setSelectedFolder(id); setSmartFilter('all') })}
           onSelectSmartFilter={(f) => changeScope(() => { setSmartFilter(f); setSelectedFolder(null) })}
           onCreateFolder={async (parentId, name) => {
@@ -364,6 +365,30 @@ export function App() {
                 Tax <strong className="num">{formatMoney(primary?.taxMinor ?? 0, primary?.currency)}</strong>
               </span>
             </>
+          )}
+          {/* Flag summary. Clickable, because seeing "3 need review" and then
+              having to find the filter yourself is a dead end. */}
+          {totals && totals.needsReviewCount > 0 && (
+            <button
+              type="button"
+              className="stat stat-flag"
+              onClick={() => changeScope(() => { setSmartFilter('needsReview'); setSelectedFolder(null) })}
+              title={
+                `${totals.needsManualEntryCount} need manual entry · ` +
+                `${totals.missingDataCount} missing key data · ` +
+                `${totals.lowConfidenceCount} low confidence`
+              }
+            >
+              {totals.needsManualEntryCount > 0 && (
+                <span className="stat-flag-danger">{totals.needsManualEntryCount} need entry</span>
+              )}
+              {totals.needsManualEntryCount > 0 && totals.needsReviewCount > totals.needsManualEntryCount && ' · '}
+              {totals.needsReviewCount > totals.needsManualEntryCount && (
+                <span className="stat-flag-warn">
+                  {totals.needsReviewCount - totals.needsManualEntryCount} to check
+                </span>
+              )}
+            </button>
           )}
           {totals?.hasIncompleteAmounts && (
             <span className="stat stat-warn" title="Some receipts have no amount, so this sum is incomplete">

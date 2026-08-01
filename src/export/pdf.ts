@@ -2,7 +2,7 @@
  * Searchable PDF export via pdf-lib.
  * Page image + invisible text layer from ocr_words_json (stored-master bboxes).
  */
-import { createRequire } from 'node:module'
+import { nodeRequire } from '../shared/nodeRequire.ts'
 import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExportRequest } from '../shared/ipc.ts'
@@ -19,7 +19,9 @@ import {
 } from './query.ts'
 import type { CabinetProfile, ExportContext, KeeprDatabase } from './types.ts'
 
-const require = createRequire(import.meta.url)
+// Dual-runtime: import.meta.url is undefined in the CJS bundle Electron loads,
+// and esbuild compiles import.meta to {} so the .url read yields undefined.
+const require = nodeRequire
 const {
   PDFDocument,
   StandardFonts,

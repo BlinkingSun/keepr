@@ -63,6 +63,32 @@ export interface GridRow {
   reviewed: boolean
   hasImages: boolean
   isSplitChild: boolean
+  /**
+   * Worst OCR outcome across this item's pages.
+   *
+   *   'none'    no images (a manually created item)
+   *   'pending' queued or running
+   *   'done'    read successfully
+   *   'failed'  OCR errored on at least one page
+   *
+   * Distinct from missingFields on purpose. "OCR could not read this receipt" and
+   * "this receipt genuinely has no total printed on it" look identical in a list
+   * of empty fields, and they call for different actions: the first needs manual
+   * entry from the image, the second needs nothing at all.
+   */
+  ocrStatus: 'none' | 'pending' | 'done' | 'failed'
+  /**
+   * Lowest page confidence, 0..1, or null when there is nothing to report.
+   * A very low value means the text was read but is not trustworthy — the faded,
+   * skewed case, where every extracted field is suspect rather than absent.
+   */
+  ocrConfidence: number | null
+  /**
+   * True when this item cannot be trusted from OCR alone and wants a human: OCR
+   * failed, or confidence is so low the read is meaningless, or a receipt has
+   * images but yielded no usable total.
+   */
+  needsManualEntry: boolean
   /** Fields whose extraction confidence is below the display threshold. */
   lowConfidenceFields: string[]
   /** Key fields that are empty — drives the row's missing-data marker. */
@@ -81,13 +107,27 @@ export interface FilterTotals {
   unreviewedCount: number
   /** True if any receipt in scope has no total at all, so the sum is incomplete. */
   hasIncompleteAmounts: boolean
+  /** Items OCR could not read, or read too poorly to trust. Highest severity. */
+  needsManualEntryCount: number
+  /** Items with at least one field extracted below the confidence threshold. */
+  lowConfidenceCount: number
+  /** Items missing a key field (vendor, date, amount, category). */
+  missingDataCount: number
+  /** Union of the three above — the badge number for the Needs Review filter. */
+  needsReviewCount: number
 }
 
 export interface ListRequest {
   folderId?: number
   includeSubfolders?: boolean
   type?: ItemType
-  smartFilter?: 'all' | 'recent' | 'unreviewed' | 'inbox' | 'trash'
+  /**
+   * 'needsReview' collects everything the app is not confident it got right:
+   * failed or unusable OCR, a receipt with an image but no amount, a
+   * low-confidence field, or missing key data. It exists so the answer to "did
+   * anything come in wrong?" is one click, not a scan down a long list.
+   */
+  smartFilter?: 'all' | 'recent' | 'unreviewed' | 'inbox' | 'trash' | 'needsReview'
   /**
    * Include superseded split origins. Default false, and it should stay false
    * for any grid the user reads totals from: an origin listed beside its own

@@ -91,7 +91,9 @@ export async function importFiles(
 
     ocrWaiters.set(job.id, ocrPromise.then(() => undefined))
 
-    if (deps.awaitOcr) {
+    // Request wins over deps: a caller asking to wait is being explicit about
+    // this import, while deps.awaitOcr is a default for the whole context.
+    if (req.awaitOcr ?? deps.awaitOcr) {
       await ocrPromise
     }
   }
@@ -376,8 +378,8 @@ async function rasterizePdfPageDirect(
   pageIndex: number,
   dpi: number,
 ): Promise<{ buffer: Buffer; width: number; height: number }> {
-  const { createRequire } = await import('node:module')
-  const require = createRequire(import.meta.url)
+  // Dual-runtime shim: createRequire(import.meta.url) throws in the CJS bundle.
+  const { nodeRequire: require } = await import('../shared/nodeRequire.ts')
   const { getDocument, GlobalWorkerOptions } = await import(
     'pdfjs-dist/legacy/build/pdf.mjs'
   )

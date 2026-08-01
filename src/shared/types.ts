@@ -339,10 +339,22 @@ export type ExtractionRecord = Partial<Record<ExtractableField, FieldProvenance>
  * a field at 0.80 was flagged in the details form and silent in the grid. When a
  * marker appears inconsistently the user stops trusting all of them.
  *
- * 0.85 rather than 0.75 because the approved mockup shows a 78% field flagged,
- * and the mockup is the contract.
+ * MEASURED, not chosen. The value was first set to 0.85 to match a mockup that
+ * happened to show a 78% field flagged, and a corpus run showed the consequence:
+ * 11 of 12 correctly-extracted receipts were marked uncertain, which makes the
+ * marker meaningless. Confidence of CORRECT extractions across that corpus:
+ *
+ *   total     0.81 - 0.95
+ *   txnDate   0.60 - 0.93
+ *   vendor    0.79
+ *   taxTotal  0.55 - 0.96
+ *
+ * Correct values bottom out at 0.55, and unreadable output scores 0.11 - 0.45, so
+ * 0.5 separates them. Honest limitation: that corpus contained no wrong values, so
+ * this is calibrated to "does not flag correct data" rather than to a measured
+ * catch rate. Re-derive it if the extractors' scoring changes.
  */
-export const LOW_CONFIDENCE_THRESHOLD = 0.85
+export const LOW_CONFIDENCE_THRESHOLD = 0.5
 
 /* ===========================================================================
  * Jobs

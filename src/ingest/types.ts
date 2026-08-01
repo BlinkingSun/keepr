@@ -54,6 +54,16 @@ export interface IngestDeps {
 export type IngestImportOptions = {
   /** When true, each PDF page becomes its own item. Default false. */
   splitPages?: boolean
+  /**
+   * Wait for OCR before returning, overriding deps.awaitOcr for this call.
+   *
+   * This was previously readable only from IngestDeps while every caller — the
+   * HTTP /import route included — passed it on the request. Object spread bypasses
+   * TypeScript's excess-property check, so it compiled, silently did nothing, and
+   * an import of 12 files reported every page as still 'pending'. A flag that is
+   * accepted and ignored is worse than one that does not exist.
+   */
+  awaitOcr?: boolean
 }
 
 export type { Job, JobKind, JobProgressEvent, OcrProvider, FileStore, Repositories }

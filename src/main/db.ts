@@ -14,6 +14,7 @@ import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
+import { applySeed } from '../rules/seed.ts'
 
 export interface OpenOptions {
   /** Library root. Holds library.sqlite and the images/ tree. */
@@ -148,8 +149,20 @@ export function openLibrary(opts: OpenOptions): OpenResult {
   return { db, dbPath, schemaVersion, applied, backupPath }
 }
 
-/** Seeds the folders every library needs. Idempotent. */
-export function ensureSystemFolders(db: Database.Database): { inboxId: number; trashId: number } {
+/**
+ * Seeds the folders and lookup lists every library needs. Idempotent.
+ *
+ * The list seed was written by Lane A and then never called from anywhere — 87
+ * vendors with default categories, 24 categories, 27 tax categories and 15 payment
+ * types sitting as dead code. The visible consequence: no imported receipt ever
+ * got a category, because the vendor to category rule needs a seeded vendor with a
+ * default to match against, so every single receipt came in flagged as incomplete.
+ * A seed that is never applied is indistinguishable from no seed at all.
+ */
+export function ensureSystemFolders(
+  db: Database.Database,
+  opts: { seed?: boolean } = {},
+): { inboxId: number; trashId: number } {
   const now = Date.now()
   const get = (kind: string) =>
     (db.prepare(`SELECT id FROM folder WHERE kind = ?`).get(kind) as { id: number } | undefined)?.id
@@ -160,6 +173,18 @@ export function ensureSystemFolders(db: Database.Database): { inboxId: number; t
 
   const inboxId = get('inbox') ?? mk('inbox', 'Inbox')
   const trashId = get('trash') ?? mk('trash', 'Trash')
+
+  // Only seed a genuinely empty library: re-running it over a library where the
+  // user has curated their own lists would resurrect entries they deleted.
+  const vendorCount = (db.prepare('SELECT count(*) c FROM vendor').get() as { c: number }).c
+  const categoryCount = (db.prepare('SELECT count(*) c FROM category').get() as { c: number }).c
+  if (opts.seed !== false && vendorCount === 0 && categoryCount === 0) {
+    const counts = applySeed(db, now)
+    console.log(
+      `[keepr] seeded lists: ${counts.vendors} vendors, ${counts.categories} categories, ` +
+        `${counts.taxCategories} tax categories, ${counts.paymentTypes} payment types`,
+    )
+  }
 
   if (!(db.prepare('SELECT count(*) c FROM cabinet').get() as { c: number }).c) {
     db.prepare(

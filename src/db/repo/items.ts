@@ -35,6 +35,9 @@ import type { Database } from './types.ts'
 // the other.
 const LOW_CONFIDENCE_THRESHOLD = SHARED_LOW_CONFIDENCE_THRESHOLD
 
+/** Fields whose confidence is not meaningful enough to flag. */
+const NON_PRECISION_FIELDS = new Set(['description'])
+
 const FIELD_TO_EXTRACTION: Partial<Record<keyof ItemPatch, ExtractableField>> = {
   txnDate: 'txnDate',
   vendorName: 'vendor',
@@ -61,6 +64,10 @@ interface GridSqlRow {
   reviewed_at: number | null
   has_images: number
   is_split_child: number
+  ocr_failed: number
+  ocr_pending: number
+  ocr_done: number
+  ocr_min_conf: number | null
   extraction_json: string | null
   missing_vendor: number | null
   missing_date: number | null
@@ -80,6 +87,11 @@ function lowConfidenceFields(extractionJson: string | null): string[] {
   const out: string[] = []
   for (const [field, prov] of Object.entries(rec)) {
     if (!prov) continue
+    // 'description' is concatenated line-item text, not a precision field. Its
+    // confidence is inherently around 0.45, so including it flagged every receipt
+    // ever imported and made the low-confidence count equal to the row count —
+    // a signal that fires always is not a signal.
+    if (NON_PRECISION_FIELDS.has(field)) continue
     if (typeof prov.confidence === 'number' && prov.confidence < LOW_CONFIDENCE_THRESHOLD) {
       out.push(field)
     }
@@ -95,11 +107,13 @@ function missingFieldsFromRow(r: GridSqlRow): string[] {
     // Prefer view flags when present; fall back to column emptiness for complete receipts
     // that are NOT in v_missing_key_data (all null LEFT JOIN).
   }
+  // Fields OCR should have read. An empty one means something went wrong.
   if (r.missing_vendor === 1) out.push('vendor')
   if (r.missing_date === 1) out.push('txnDate')
   if (r.missing_total === 1) out.push('total')
-  if (r.missing_category === 1) out.push('category')
-  if (r.missing_tax_category === 1) out.push('taxCategory')
+  // Category and tax category are deliberately NOT included. They are user
+  // assignments, not extraction failures, and marking them made every row look
+  // broken on arrival.
 
   // Row not in the missing view (LEFT JOIN all-null): derive from columns for receipts.
   if (
@@ -123,6 +137,45 @@ function missingFieldsFromRow(r: GridSqlRow): string[] {
   return out
 }
 
+/**
+ * Below this page confidence the text was read but is not worth trusting — the
+ * faded, skewed case. Distinct from OCR failing outright, and distinct from the
+ * per-field threshold: this judges the whole page.
+ */
+const OCR_UNUSABLE_CONFIDENCE = 0.3
+
+/**
+ * Turn raw page counts into the signals the UI needs.
+ *
+ * The point of separating these from missingFields: an empty total because OCR
+ * could not read the receipt needs manual entry from the image, while an empty
+ * total on a receipt that never printed one needs nothing. Both look like a blank
+ * cell, so the row has to say which it is.
+ */
+function ocrSignals(r: GridSqlRow): Pick<GridRow, 'ocrStatus' | 'ocrConfidence' | 'needsManualEntry'> {
+  const hasPages = r.ocr_failed + r.ocr_pending + r.ocr_done > 0
+  const ocrStatus: GridRow['ocrStatus'] = !hasPages
+    ? 'none'
+    : r.ocr_failed > 0
+      ? 'failed'
+      : r.ocr_pending > 0
+        ? 'pending'
+        : 'done'
+
+  const ocrConfidence = r.ocr_min_conf == null ? null : Number(r.ocr_min_conf)
+  const unusable = ocrConfidence != null && ocrConfidence < OCR_UNUSABLE_CONFIDENCE
+
+  // A receipt WITH an image that still has no amount is the case worth escalating:
+  // the information is on the paper and the machine did not get it.
+  const receiptWithoutAmount = r.type === 'receipt' && hasPages && r.total_minor === null
+
+  return {
+    ocrStatus,
+    ocrConfidence,
+    needsManualEntry: ocrStatus === 'failed' || unusable || receiptWithoutAmount,
+  }
+}
+
 function mapGridRow(r: GridSqlRow): GridRow {
   return {
     itemId: r.item_id,
@@ -140,6 +193,7 @@ function mapGridRow(r: GridSqlRow): GridRow {
     reviewed: r.reviewed_at != null,
     hasImages: r.has_images === 1,
     isSplitChild: r.is_split_child === 1,
+    ...ocrSignals(r),
     lowConfidenceFields: lowConfidenceFields(r.extraction_json),
     missingFields: missingFieldsFromRow(r),
   }
@@ -186,6 +240,12 @@ export class ItemsRepo {
           SELECT 1 FROM v_item_pages vp WHERE vp.item_id = i.id
         ) THEN 1 ELSE 0 END AS has_images,
         CASE WHEN i.split_role = 'child' THEN 1 ELSE 0 END AS is_split_child,
+        -- OCR outcome aggregated over this item's pages, in the SAME statement so
+        -- the query count stays bounded regardless of row count.
+        (SELECT COUNT(*) FROM page p WHERE p.item_id = i.id AND p.ocr_status = 'failed') AS ocr_failed,
+        (SELECT COUNT(*) FROM page p WHERE p.item_id = i.id AND p.ocr_status IN ('pending','queued','running')) AS ocr_pending,
+        (SELECT COUNT(*) FROM page p WHERE p.item_id = i.id AND p.ocr_status = 'done') AS ocr_done,
+        (SELECT MIN(p.ocr_conf) FROM page p WHERE p.item_id = i.id) AS ocr_min_conf,
         r.extraction_json,
         mk.missing_vendor,
         mk.missing_date,
@@ -210,7 +270,7 @@ export class ItemsRepo {
       .prepare(`SELECT COUNT(*) AS c FROM item i WHERE ${whereSql}`)
       .get(...params) as { c: number }
 
-    const totals = this.computeFilterTotals(req)
+    const totals = this.computeFilterTotals(req, rows)
 
     return {
       rows,
@@ -223,11 +283,37 @@ export class ItemsRepo {
    * Totals ONLY from v_summable_receipts / v_summable_tax — never receipt_data.
    * Always per-currency.
    */
-  private computeFilterTotals(req: ListRequest): FilterTotals {
+  /**
+   * SQL predicate for "this item needs a human", shared by the needsReview filter
+   * and the flag counts so the badge and the list can never disagree.
+   *
+   * Deliberately mirrors ocrSignals() plus the missing-key-data view. Keeping it in
+   * one place is the point: a badge saying 3 next to a filter showing 5 destroys
+   * trust in both.
+   */
+  private static readonly NEEDS_REVIEW_SQL = `(
+       EXISTS (SELECT 1 FROM page p WHERE p.item_id = i.id AND p.ocr_status = 'failed')
+    OR EXISTS (SELECT 1 FROM page p WHERE p.item_id = i.id AND p.ocr_conf IS NOT NULL AND p.ocr_conf < ${OCR_UNUSABLE_CONFIDENCE})
+    OR (i.type = 'receipt'
+        AND EXISTS (SELECT 1 FROM page p WHERE p.item_id = i.id)
+        AND (SELECT rd.total_minor FROM receipt_data rd WHERE rd.item_id = i.id) IS NULL)
+    OR EXISTS (SELECT 1 FROM v_missing_key_data mk
+                WHERE mk.item_id = i.id
+                  -- Only fields OCR was supposed to find. Category and tax
+                  -- category are assignments the USER makes, so counting them
+                  -- flagged every receipt ever imported and made the filter
+                  -- useless: a flag that fires on everything carries no signal.
+                  AND (mk.missing_vendor = 1 OR mk.missing_date = 1 OR mk.missing_total = 1))
+  )`
+
+  private computeFilterTotals(req: ListRequest, rowsForFlags: GridRow[] = []): FilterTotals {
     // Map item-scoped WHERE (alias i) onto summable receipts (alias sr joined to item i).
     // Smart filter 'trash' means no live sums.
     if (req.smartFilter === 'trash') {
-      return { byCurrency: [], unreviewedCount: 0, hasIncompleteAmounts: false }
+      return {
+        byCurrency: [], unreviewedCount: 0, hasIncompleteAmounts: false,
+        needsManualEntryCount: 0, lowConfidenceCount: 0, missingDataCount: 0, needsReviewCount: 0,
+      }
     }
 
     // Rebuild a where clause that works when the driving table is v_summable_receipts.
@@ -266,6 +352,36 @@ export class ItemsRepo {
 
     const incomplete = byCur.some((r) => r.missing_amount_count > 0)
 
+    // Flag counts, over the ITEM scope rather than the summable-receipt scope: a
+    // document or contact can need attention too, and an item with no readable
+    // amount may not appear in a money query at all.
+    const { whereSql: itemWhere, params: itemParams } = this.buildWhere(req)
+    const flags = this.db
+      .prepare(
+        `SELECT
+           SUM(CASE WHEN
+                 EXISTS (SELECT 1 FROM page p WHERE p.item_id = i.id AND p.ocr_status = 'failed')
+              OR EXISTS (SELECT 1 FROM page p WHERE p.item_id = i.id AND p.ocr_conf IS NOT NULL AND p.ocr_conf < ${OCR_UNUSABLE_CONFIDENCE})
+              OR (i.type = 'receipt'
+                  AND EXISTS (SELECT 1 FROM page p WHERE p.item_id = i.id)
+                  AND (SELECT rd.total_minor FROM receipt_data rd WHERE rd.item_id = i.id) IS NULL)
+               THEN 1 ELSE 0 END) AS manual,
+           SUM(CASE WHEN EXISTS (SELECT 1 FROM v_missing_key_data mk
+                                  WHERE mk.item_id = i.id
+                                    AND (mk.missing_vendor = 1 OR mk.missing_date = 1 OR mk.missing_total = 1))
+               THEN 1 ELSE 0 END) AS missing,
+           SUM(CASE WHEN ${ItemsRepo.NEEDS_REVIEW_SQL} THEN 1 ELSE 0 END) AS needs,
+           SUM(CASE WHEN (SELECT rd.extraction_json FROM receipt_data rd WHERE rd.item_id = i.id) LIKE '%"confidence"%'
+               THEN 1 ELSE 0 END) AS has_extraction
+         FROM item i WHERE ${itemWhere}`,
+      )
+      .get(...itemParams) as { manual: number | null; missing: number | null; needs: number | null }
+
+    // Low confidence is per FIELD and lives in extraction_json, which SQL cannot
+    // usefully pick apart, so it is counted from the rows already mapped for this
+    // page rather than with a second scan.
+    const lowConfidence = rowsForFlags.filter((r) => r.lowConfidenceFields.length > 0).length
+
     return {
       byCurrency: byCur.map((r) => ({
         currency: r.currency,
@@ -275,6 +391,10 @@ export class ItemsRepo {
       })),
       unreviewedCount: unreviewed.c,
       hasIncompleteAmounts: incomplete,
+      needsManualEntryCount: flags.manual ?? 0,
+      lowConfidenceCount: lowConfidence,
+      missingDataCount: flags.missing ?? 0,
+      needsReviewCount: flags.needs ?? 0,
     }
   }
 
@@ -304,6 +424,9 @@ export class ItemsRepo {
 
     if (req.smartFilter === 'unreviewed') {
       clauses.push(`i.reviewed_at IS NULL`)
+    }
+    if (req.smartFilter === 'needsReview') {
+      clauses.push(ItemsRepo.NEEDS_REVIEW_SQL)
     }
     if (req.smartFilter === 'inbox') {
       clauses.push(`i.folder_id IN (SELECT id FROM folder WHERE kind = 'inbox')`)
@@ -1019,6 +1142,12 @@ export class ItemsRepo {
            i.reviewed_at,
            CASE WHEN EXISTS (SELECT 1 FROM v_item_pages vp WHERE vp.item_id = i.id) THEN 1 ELSE 0 END AS has_images,
            CASE WHEN i.split_role = 'child' THEN 1 ELSE 0 END AS is_split_child,
+        -- OCR outcome aggregated over this item's pages, in the SAME statement so
+        -- the query count stays bounded regardless of row count.
+        (SELECT COUNT(*) FROM page p WHERE p.item_id = i.id AND p.ocr_status = 'failed') AS ocr_failed,
+        (SELECT COUNT(*) FROM page p WHERE p.item_id = i.id AND p.ocr_status IN ('pending','queued','running')) AS ocr_pending,
+        (SELECT COUNT(*) FROM page p WHERE p.item_id = i.id AND p.ocr_status = 'done') AS ocr_done,
+        (SELECT MIN(p.ocr_conf) FROM page p WHERE p.item_id = i.id) AS ocr_min_conf,
            r.extraction_json,
            mk.missing_vendor, mk.missing_date, mk.missing_total, mk.missing_category, mk.missing_tax_category
          FROM item i

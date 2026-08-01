@@ -2,7 +2,7 @@
  * Excel export via exceljs — per-currency sheets, optional thumbnails,
  * category cross-total block. Money is integer minor until the cell.
  */
-import { createRequire } from 'node:module'
+import { nodeRequire } from '../shared/nodeRequire.ts'
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExportRequest } from '../shared/ipc.ts'
@@ -19,7 +19,9 @@ import {
   type KeeprDatabase,
 } from './types.ts'
 
-const require = createRequire(import.meta.url)
+// Dual-runtime: import.meta.url is undefined in the CJS bundle Electron loads,
+// and esbuild compiles import.meta to {} so the .url read yields undefined.
+const require = nodeRequire
 // exceljs is CJS; createRequire is the reliable Node path without a new dep.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ExcelJS = require('exceljs') as typeof import('exceljs')

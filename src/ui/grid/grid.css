@@ -425,3 +425,24 @@
 .keepr-grid-footer-quiet {
   color: var(--text-muted);
 }
+
+/* Row flag. Fixed width and centred so the column reads as a single vertical
+   strip the eye can scan without stopping on each row. */
+.keepr-grid-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+/* Needs manual entry: the machine failed and only a person can fix it. */
+.keepr-grid-flag-danger { background: var(--danger); color: var(--bg-base); }
+/* Check this against the image. */
+.keepr-grid-flag-warn { background: var(--warn); color: var(--bg-base); }
+/* Still working — not a problem yet. */
+.keepr-grid-flag-quiet { color: var(--text-muted); background: transparent; font-size: 14px; }

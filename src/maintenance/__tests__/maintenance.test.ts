@@ -75,7 +75,8 @@ describe('Lane K — backup / restore / archive / trash', () => {
           libraryRoot: freshRoot,
           schemaDir: SCHEMA_DIR,
           skipBackup: true,
-        })
+      skipSeed: true,
+    })
         const ver = await restore(fresh, bakDir)
         assert.equal(ver.ok, true, ver.checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`).join('; '))
         assert.ok(ver.checks.every((c) => c.ok))
@@ -84,7 +85,8 @@ describe('Lane K — backup / restore / archive / trash', () => {
           libraryRoot: freshRoot,
           schemaDir: SCHEMA_DIR,
           skipBackup: true,
-        })
+      skipSeed: true,
+    })
         try {
           const items = reopened.db.prepare(`SELECT count(*) c FROM item`).get() as { c: number }
           const folders = reopened.db.prepare(`SELECT count(*) c FROM folder`).get() as { c: number }
@@ -154,7 +156,8 @@ describe('Lane K — backup / restore / archive / trash', () => {
           libraryRoot: freshRoot,
           schemaDir: SCHEMA_DIR,
           skipBackup: true,
-        })
+      skipSeed: true,
+    })
         const ver = await restore(fresh, bakDir)
         assert.equal(ver.ok, false, 'restore must fail loudly when backup image is missing')
         assert.ok(ver.checks.some((c) => !c.ok && (c.detail.includes('missing') || c.name.includes('page') || c.name.includes('manifest'))))
@@ -250,7 +253,8 @@ describe('Lane K — backup / restore / archive / trash', () => {
           libraryRoot: freshRoot,
           schemaDir: SCHEMA_DIR,
           skipBackup: true,
-        })
+      skipSeed: true,
+    })
         const ver = await restore(fresh, bakDir)
         assert.equal(ver.ok, true, ver.checks.filter((c) => !c.ok).map((c) => c.detail).join('; '))
 
@@ -258,7 +262,8 @@ describe('Lane K — backup / restore / archive / trash', () => {
           libraryRoot: freshRoot,
           schemaDir: SCHEMA_DIR,
           skipBackup: true,
-        })
+      skipSeed: true,
+    })
         try {
           const row = reopened.db
             .prepare(`SELECT title FROM document_data WHERE item_id = ?`)

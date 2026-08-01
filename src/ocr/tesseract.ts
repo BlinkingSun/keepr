@@ -10,7 +10,7 @@
  */
 
 import { cpus } from 'node:os'
-import { createRequire } from 'node:module'
+import { nodeRequire } from '../shared/nodeRequire.ts'
 import type {
   BBox,
   OcrOptions,
@@ -85,7 +85,8 @@ const ENHANCE_VARIANTS: Array<{ denoise: boolean; rotate: number; upscale: boole
   { denoise: true, rotate: 2.5, upscale: true },
 ]
 
-const require = createRequire(import.meta.url)
+// Dual-runtime: import.meta.url is undefined in the CJS bundle Electron loads.
+const require = nodeRequire
 
 export interface TesseractProviderOptions {
   /** Fixed worker count for the scheduler. Default min(4, max(1, cores-1)). */

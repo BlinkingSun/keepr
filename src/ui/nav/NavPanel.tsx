@@ -15,6 +15,7 @@ import {
   type MouseEvent,
 } from 'react'
 import type { Folder } from '../../shared/types.ts'
+import type { ListRequest } from '../../shared/ipc.ts'
 import { shouldShowInboxBadge } from './badge.ts'
 import { canDrop, flattenFolders } from './tree.ts'
 import './nav.css'
@@ -23,7 +24,14 @@ export interface NavPanelProps {
   folders: Folder[]
   inboxCount: number
   selectedFolderId: number | null
-  smartFilter: 'all' | 'recent' | 'unreviewed' | 'inbox' | 'trash'
+  /** Derived from the contract so adding a filter cannot leave the nav behind. */
+  smartFilter: NonNullable<ListRequest['smartFilter']>
+  /**
+   * Count for the Needs Review row. Rendered as a warn-coloured badge because
+   * unlike the Inbox count this is not queue depth — it is work the app believes
+   * it may have gotten wrong.
+   */
+  needsReviewCount?: number
   onSelectFolder(id: number | null): void
   onSelectSmartFilter(f: NavPanelProps['smartFilter']): void
   onCreateFolder(parentId: number | null, name: string): Promise<void>
@@ -34,7 +42,10 @@ export interface NavPanelProps {
   onCollapsedChange(next: Set<number>): void
 }
 
-const SMART_FILTERS: Array<{ key: Exclude<NavPanelProps['smartFilter'], 'inbox' | 'trash'>; label: string }> = [
+const SMART_FILTERS: Array<{
+  key: Exclude<NavPanelProps['smartFilter'], 'inbox' | 'trash' | 'needsReview'>
+  label: string
+}> = [
   { key: 'all', label: 'View All' },
   { key: 'recent', label: 'Recently Added' },
   { key: 'unreviewed', label: 'Unreviewed' },
@@ -46,7 +57,7 @@ const DND_ITEMS = 'application/x-keepr-items'
 type FocusTarget =
   | { kind: 'inbox' }
   | { kind: 'folder'; id: number }
-  | { kind: 'smart'; filter: 'all' | 'recent' | 'unreviewed' }
+  | { kind: 'smart'; filter: 'all' | 'recent' | 'unreviewed' | 'needsReview' }
   | { kind: 'trash' }
 
 function rowId(target: FocusTarget): string {
@@ -68,6 +79,7 @@ export function NavPanel(props: NavPanelProps) {
     inboxCount,
     selectedFolderId,
     smartFilter,
+    needsReviewCount,
     onSelectFolder,
     onSelectSmartFilter,
     onCreateFolder,
@@ -92,6 +104,9 @@ export function NavPanel(props: NavPanelProps) {
   const focusOrder = useMemo((): FocusTarget[] => {
     const order: FocusTarget[] = [{ kind: 'inbox' }]
     for (const row of flat) order.push({ kind: 'folder', id: row.folder.id })
+    // Needs Review is first in traversal order as well as first visually: it is
+    // where a keyboard user most often wants to land.
+    order.push({ kind: 'smart', filter: 'needsReview' })
     for (const s of SMART_FILTERS) order.push({ kind: 'smart', filter: s.key })
     order.push({ kind: 'trash' })
     return order
@@ -146,7 +161,9 @@ export function NavPanel(props: NavPanelProps) {
   )
 
   const selectSmart = useCallback(
-    (f: 'all' | 'recent' | 'unreviewed') => {
+    // Typed from the contract rather than repeating the union, which is how the
+    // nav fell a filter behind in the first place.
+    (f: Exclude<NonNullable<ListRequest['smartFilter']>, 'inbox' | 'trash'>) => {
       onSelectSmartFilter(f)
       onSelectFolder(null)
     },
@@ -568,6 +585,33 @@ export function NavPanel(props: NavPanelProps) {
           <span className="nav-panel-label">New folder</span>
         </button>
       )}
+
+      {/* ---- Needs Review ------------------------------------------------
+          Sits ABOVE the ordinary smart filters and carries a warn-coloured count,
+          because it is not a view of the library — it is a list of things the app
+          suspects it got wrong. If nothing needs review the row still renders, so
+          its absence never has to be interpreted. */}
+      <div className="nav-panel-head">Review</div>
+      <button
+        type="button"
+        id={rowId({ kind: 'smart', filter: 'needsReview' })}
+        role="treeitem"
+        aria-selected={smartFilter === 'needsReview' && selectedFolderId == null}
+        className={
+          smartFilter === 'needsReview' && selectedFolderId == null
+            ? 'nav-panel-row nav-panel-selected'
+            : 'nav-panel-row'
+        }
+        onClick={() => selectSmart('needsReview')}
+        title="Items with failed or unreadable OCR, missing key data, or low-confidence fields"
+      >
+        <span className="nav-panel-chevron-spacer" aria-hidden />
+        <span className="nav-panel-label">Needs Review</span>
+        {(needsReviewCount ?? 0) > 0 && (
+          <span className="nav-panel-badge nav-panel-badge-warn">{needsReviewCount}</span>
+        )}
+        {(needsReviewCount ?? 0) === 0 && <span className="nav-panel-badge-clear">clear</span>}
+      </button>
 
       {/* ---- Smart filters ----------------------------------------------- */}
       <div className="nav-panel-head">Smart Filters</div>

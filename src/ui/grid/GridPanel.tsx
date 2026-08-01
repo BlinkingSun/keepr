@@ -655,6 +655,44 @@ export function GridPanel(props: GridPanelProps): ReactNode {
   )
 }
 
+/**
+ * The row-level flag.
+ *
+ * Three severities, deliberately different marks rather than three shades of the
+ * same one, so the reason is legible at a glance and not just the fact that
+ * something is wrong:
+ *
+ *   !  danger  OCR failed or was unreadable — the data is on the paper and the
+ *              machine did not get it, so this needs manual entry from the image.
+ *   ?  warn    a key field is empty, or a field was extracted with low
+ *              confidence — check it against the image.
+ *   (nothing)  the app believes this row is right. An empty cell is the reward,
+ *              which is why there is no "ok" tick: a column of ticks trains the
+ *              eye to skip the column.
+ */
+function RowFlag({ row }: { row: GridRow }) {
+  if (row.needsManualEntry) {
+    const why =
+      row.ocrStatus === 'failed'
+        ? 'OCR failed on this image — enter the details manually'
+        : row.ocrConfidence != null && row.ocrConfidence < 0.3
+          ? `Text was unreadable (${Math.round(row.ocrConfidence * 100)}% confidence) — enter the details manually`
+          : 'This receipt has an image but no amount was found — enter it manually'
+    return <span className="keepr-grid-flag keepr-grid-flag-danger" title={why} aria-label={why}>!</span>
+  }
+  if (row.missingFields.length > 0 || row.lowConfidenceFields.length > 0) {
+    const parts: string[] = []
+    if (row.missingFields.length) parts.push(`missing: ${row.missingFields.join(', ')}`)
+    if (row.lowConfidenceFields.length) parts.push(`low confidence: ${row.lowConfidenceFields.join(', ')}`)
+    const why = parts.join(' · ')
+    return <span className="keepr-grid-flag keepr-grid-flag-warn" title={why} aria-label={why}>?</span>
+  }
+  if (row.ocrStatus === 'pending') {
+    return <span className="keepr-grid-flag keepr-grid-flag-quiet" title="OCR still running" aria-label="OCR still running">…</span>
+  }
+  return null
+}
+
 /* ---- row subcomponent ------------------------------------------------- */
 
 interface GridRowViewProps {
@@ -751,6 +789,7 @@ function GridRowView(props: GridRowViewProps): ReactNode {
               />
             ) : (
               <>
+                {col.key === 'flag' && <RowFlag row={row} />}
                 {row.isSplitChild && col.key === 'rowNum' && (
                   <span className="keepr-grid-badge keepr-grid-badge-split" title="Split child">
                     split
@@ -758,6 +797,11 @@ function GridRowView(props: GridRowViewProps): ReactNode {
                 )}
                 {empty && missing ? (
                   <span className="keepr-grid-missing-mark">missing</span>
+                ) : empty && col.key === 'flag' ? (
+                  // No em-dash in the flag column. A clean row must read as BLANK:
+                  // a column of dashes is visual noise that trains the eye to skip
+                  // the very column the flags live in.
+                  null
                 ) : empty && col.key !== 'rowNum' ? (
                   <span className="keepr-grid-cell-text keepr-grid-muted">—</span>
                 ) : (

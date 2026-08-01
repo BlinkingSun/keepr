@@ -48,6 +48,15 @@ export interface CreateContextOptions {
   libraryRoot: string
   schemaDir?: string
   skipBackup?: boolean
+  /**
+   * Skip seeding the lookup lists. Tests only.
+   *
+   * A real library wants the 87 seeded vendors and their default categories — that
+   * is what makes an imported receipt arrive already categorised. A test fixture
+   * that inserts its own 'Materials' category wants an empty slate, and would
+   * otherwise collide on the unique name.
+   */
+  skipSeed?: boolean
 }
 
 /**
@@ -92,7 +101,7 @@ export function createContext(opts: CreateContextOptions): AppContext {
     ...(opts.skipBackup === undefined ? {} : { skipBackup: opts.skipBackup }),
   })
 
-  const { inboxId, trashId } = ensureSystemFolders(db)
+  const { inboxId, trashId } = ensureSystemFolders(db, { seed: opts.skipSeed !== true })
 
   // Citation counting lives here rather than inside the file store so the store
   // has no database dependency. A path is still cited while ANY page row
