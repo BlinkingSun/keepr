@@ -22,7 +22,7 @@
  */
 
 import type {
-  CivilDate, ContactData, CustomFieldType, DocumentData, Folder, Item, ItemType,
+  CivilDate, ScanCaps, ScanDevice, ScanErrorCode, ScanOptions, ContactData, CustomFieldType, DocumentData, Folder, Item, ItemType,
   Job, JobProgressEvent, LibraryRelPath, MinorUnits, OcrStatus, Page,
   ReceiptData, ReceiptTaxLine, ResolvedPage, Rotation, RuleSource, SearchQuery,
   SearchResult, Sha256, SplitGroup,
@@ -93,6 +93,13 @@ export interface GridRow {
   lowConfidenceFields: string[]
   /** Key fields that are empty — drives the row's missing-data marker. */
   missingFields: string[]
+  /**
+   * First page's thumbnail (falling back to the full image), library-relative.
+   * A split child resolves its ORIGIN's image — a child card with a blank
+   * thumbnail would read as a missing scan. Null only when the item truly has no
+   * pages (manually created).
+   */
+  thumbRelPath: LibraryRelPath | null
 }
 
 /** Totals for the current filter. Grouped by currency because sums never cross
@@ -199,10 +206,17 @@ export interface SplitResult {
 }
 
 export interface ImportRequest {
+  /** Files AND/OR directories — directories are walked recursively. */
   paths: string[]
   targetFolderId?: number
   /** Default true: land in the Inbox for review rather than filing blindly. */
   toInbox?: boolean
+  /**
+   * Skip files whose content hash already exists in the library. The watched
+   * New Receipts folder sets this so a re-dropped or crash-recovered file never
+   * creates a second item — it just archives to Old Receipts.
+   */
+  skipDuplicates?: boolean
 }
 
 export interface ImportResult {
@@ -210,6 +224,11 @@ export interface ImportResult {
   itemIds: number[]
   /** Files that could not be read at all, with the reason. */
   rejected: Array<{ path: string; reason: string }>
+  /** Content already in the library (skipDuplicates). No item was created. */
+  duplicates?: Array<{ path: string; existingItemId: number }>
+  /** Unsupported files silently skipped during a directory walk — a folder with
+   *  stray .txt notes must not spam the rejected list. */
+  skippedUnsupported?: number
 }
 
 export interface ExportRequest {
@@ -330,6 +349,38 @@ export interface IpcMap {
     req: void
     res: { canceled: boolean; paths: string[] }
   }
+  /** Folder picker for whole-directory import. Separate from the file picker
+   *  because Windows cannot mix openFile and openDirectory in one dialog. */
+  'dialog:pickImportFolder': {
+    req: void
+    res: { canceled: boolean; paths: string[] }
+  }
+
+  /** Watched New Receipts folder state, for status surfaces. */
+  'watcher:status': {
+    req: void
+    res: {
+      watching: boolean
+      newDir: string
+      oldDir: string
+      pendingCount: number
+      failed: Array<{ name: string; reason: string }>
+    }
+  }
+  /** Reveal the user-facing library folders in Finder/Explorer. */
+  'shell:openPath': {
+    req: { target: 'newReceipts' | 'oldReceipts' | 'library' }
+    res: { ok: boolean }
+  }
+
+  'scan:discover': { req: { timeoutMs?: number } | void; res: { devices: ScanDevice[] } }
+  'scan:probe': { req: { host: string; port?: number; root?: string }; res: { device: ScanDevice | null; error?: string } }
+  'scan:capabilities': { req: { deviceId: string }; res: ScanCaps }
+  /** Starts a scan; progress arrives on scan:* events. Pages are written into
+   *  Old Receipts and ingested to the Inbox; on ingest failure the files move to
+   *  New Receipts so an unprocessed scan stays visible as unprocessed. */
+  'scan:start': { req: { deviceId: string; options: ScanOptions }; res: { jobId: string } }
+  'scan:cancel': { req: { jobId: string }; res: { ok: boolean } }
 }
 
 export type IpcChannel = keyof IpcMap
@@ -343,6 +394,11 @@ export interface IpcEvents {
   'folder:changed': { folderIds: number[] }
   'ocr:pageDone': { pageId: number; itemId: number; status: OcrStatus; confidence: number | null }
   'library:opened': { libraryRoot: string }
+  'scan:progress': { jobId: string; page: number; state: 'scanning' | 'done' }
+  'scan:done': { jobId: string; itemIds: number[]; pages: number; files: string[] }
+  'scan:error': { jobId: string; code: ScanErrorCode; message: string }
+  /** Watched-folder activity so the grid refreshes and failures surface. */
+  'watcher:activity': { ingested: number; duplicates: number; failed: number }
 }
 export type IpcEventName = keyof IpcEvents
 
@@ -382,6 +438,10 @@ export const IPC_CHANNELS = [
   'maint:backup', 'maint:restore', 'maint:archive', 'maint:emptyTrash',
   'shell:revealFile',
   'dialog:pickImportFiles',
+  'dialog:pickImportFolder',
+  'watcher:status',
+  'shell:openPath',
+  'scan:discover', 'scan:probe', 'scan:capabilities', 'scan:start', 'scan:cancel',
 ] as const satisfies readonly IpcChannel[]
 
 /* Compile-time completeness check: if a channel is added to IpcMap but not to

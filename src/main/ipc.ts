@@ -173,6 +173,34 @@ export function buildHandlers(ctx: AppContext): Record<string, AnyHandler> {
       return { canceled: res.canceled, paths: res.filePaths }
     },
 
+    // ---- batch 2 (keepr2): registered now so the coverage check holds; the
+    //      real implementations land at integrate as lanes W and S deliver. ----
+    'dialog:pickImportFolder': async () => {
+      const { dialog, BrowserWindow } = require('electron') as typeof import('electron')
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+      const opts = {
+        title: 'Import a folder of receipts',
+        properties: ['openDirectory', 'multiSelections'] as Array<'openDirectory' | 'multiSelections'>,
+      }
+      const res = await (win ? dialog.showOpenDialog(win, opts) : dialog.showOpenDialog(opts))
+      return { canceled: res.canceled, paths: res.filePaths }
+    },
+    'shell:openPath': async (c, r) => {
+      const { shell } = require('electron') as typeof import('electron')
+      const target =
+        r.target === 'newReceipts' ? c.newReceiptsDir
+        : r.target === 'oldReceipts' ? c.oldReceiptsDir
+        : c.libraryRoot
+      const err = await shell.openPath(target)
+      return { ok: err === '' }
+    },
+    'watcher:status': (c) => c.watcherStatus(),
+    'scan:discover': notYet('S', 'Scanner discovery'),
+    'scan:probe': notYet('S', 'Scanner probe'),
+    'scan:capabilities': notYet('S', 'Scanner capabilities'),
+    'scan:start': notYet('S', 'Scanning'),
+    'scan:cancel': notYet('S', 'Scan cancel'),
+
     'shell:revealFile': (c, r) => {
       // Electron is imported lazily so the headless path never needs it.
       const { shell } = require('electron') as typeof import('electron')

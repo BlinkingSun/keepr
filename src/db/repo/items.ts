@@ -196,6 +196,10 @@ function mapGridRow(r: GridSqlRow): GridRow {
     ...ocrSignals(r),
     lowConfidenceFields: lowConfidenceFields(r.extraction_json),
     missingFields: missingFieldsFromRow(r),
+    // PLACEHOLDER — Lane R replaces this with the first page's thumbnail via an
+    // inline subselect (split children resolving their origin's image). Kept null
+    // here only so the contract change compiles for every parallel lane.
+    thumbRelPath: null,
   }
 }
 

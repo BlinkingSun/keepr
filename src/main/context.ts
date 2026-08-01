@@ -8,7 +8,7 @@
  * rather than a parallel implementation that can drift.
  */
 import type Database from 'better-sqlite3'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { createRepositories, type Repositories } from '../db/repo/index.ts'
 import type { IngestDeps } from '../ingest/types.ts'
@@ -30,6 +30,15 @@ export interface AppContext {
   schemaVersion: number
   inboxId: number
   trashId: number
+  /** User-facing drop zone: files here are auto-ingested then archived to Old. */
+  newReceiptsDir: string
+  /** Human-browsable archive of ingested originals; scans are born here. */
+  oldReceiptsDir: string
+  /** Live watched-folder state; replaced by the real watcher at integrate. */
+  watcherStatus(): {
+    watching: boolean; newDir: string; oldDir: string
+    pendingCount: number; failed: Array<{ name: string; reason: string }>
+  }
   /**
    * Ingest dependencies, created on FIRST USE rather than at startup.
    *
@@ -117,6 +126,14 @@ export function createContext(opts: CreateContextOptions): AppContext {
         .get(rel, rel) as { c: number }
     ).c
 
+  // The filesystem-visible workflow the user asked for: "so we can tell what has
+  // and hasn't been scanned in". New Receipts is the drop zone; Old Receipts is
+  // where originals land only after their content is confirmed in the library.
+  const newReceiptsDir = path.join(opts.libraryRoot, 'New Receipts')
+  const oldReceiptsDir = path.join(opts.libraryRoot, 'Old Receipts')
+  mkdirSync(newReceiptsDir, { recursive: true })
+  mkdirSync(oldReceiptsDir, { recursive: true })
+
   const fileStore = new DiskFileStore({ libraryRoot: opts.libraryRoot, countCitations })
   const jobs = new SqliteJobQueue(db)
 
@@ -162,6 +179,12 @@ export function createContext(opts: CreateContextOptions): AppContext {
     schemaVersion,
     inboxId,
     trashId,
+    newReceiptsDir,
+    oldReceiptsDir,
+    watcherStatus: () => ({
+      watching: false, newDir: newReceiptsDir, oldDir: oldReceiptsDir,
+      pendingCount: 0, failed: [],
+    }),
     ingest,
     maintenance,
     close() {

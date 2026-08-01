@@ -452,3 +452,43 @@ export interface SearchResult {
    *  truncated list as if it were complete. */
   truncated: boolean
 }
+
+/* ===========================================================================
+ * Scanner (eSCL / AirScan) — batch 2
+ * ======================================================================== */
+
+/**
+ * A network scanner discovered via mDNS (_uscan._tcp) or manual IP probe.
+ * eSCL is the driverless protocol behind AirScan/Mopria; USB-only scanners need
+ * native driver work and are deliberately out of scope for now — UI copy says so
+ * rather than implying breakage.
+ */
+export interface ScanDevice {
+  id: string
+  name: string
+  host: string
+  port: number
+  /** Resource root from the TXT 'rs' record; almost always 'eSCL'. */
+  root: string
+  /** _uscans._tcp (TLS) responder. Listed but not yet scannable — refused with a
+   *  clear error instead of being silently hidden. */
+  secure: boolean
+}
+
+export interface ScanCaps {
+  makeModel: string
+  sources: Array<'Platen' | 'Adf'>
+  colorModes: Array<'RGB24' | 'Grayscale8' | 'BlackAndWhite1'>
+  resolutions: number[]
+  duplex: boolean
+}
+
+export interface ScanOptions {
+  source: 'Platen' | 'Adf'
+  colorMode: 'RGB24' | 'Grayscale8' | 'BlackAndWhite1'
+  dpi: number
+  duplex?: boolean
+}
+
+export type ScanErrorCode =
+  | 'not-reachable' | 'busy' | 'adf-empty' | 'canceled' | 'protocol' | 'tls-unsupported'

@@ -22,15 +22,17 @@
     "corpus:analyze": "npm run rebuild:node --silent && node --experimental-strip-types spikes/corpus/analyze.ts .corpus .corpus-lib"
   },
   "dependencies": {
+    "@napi-rs/canvas": "0.1.100",
     "better-sqlite3": "11.8.1",
     "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.10.1",
+    "multicast-dns": "^7.2.5",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sharp": "0.34.1",
-    "tesseract.js": "^5.1.1",
-    "@napi-rs/canvas": "0.1.100"
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@electron/rebuild": "3.7.2",

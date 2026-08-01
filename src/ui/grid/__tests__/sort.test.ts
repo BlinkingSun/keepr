@@ -21,6 +21,7 @@ function row(partial: Partial<GridRow> & { itemId: number }): GridRow {
     ocrStatus: 'done',
     ocrConfidence: 0.9,
     needsManualEntry: false,
+    thumbRelPath: null,
     reviewed: false,
     hasImages: false,
     isSplitChild: false,
