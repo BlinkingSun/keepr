@@ -219,6 +219,7 @@ export function createNewReceiptsWatcher(
     // Serialize per-file: import → on success move. Never batch-move after
     // a bulk import (crash mid-batch would leave partial state harder to reason).
     for (const filePath of eligible) {
+      try {
       // Containment: refuse to operate on anything whose path string escapes newDir.
       if (!isPathInside(newDir, filePath)) {
         recordFailed(filePath, 'path escapes New Receipts directory')
@@ -229,6 +230,7 @@ export function createNewReceiptsWatcher(
       // Symlink / realpath containment for move/unlink safety.
       const moveSafe = await isMoveSafe(filePath, newDir)
 
+      processingCount += 1
       let importResult
       try {
         importResult = await importFiles(deps, {
@@ -298,6 +300,13 @@ export function createNewReceiptsWatcher(
         // Move failures: leave stability at required so next tick retries immediately.
         void reason
         void nowFn
+      }
+      } finally {
+        // Every exit from this iteration — four continues, the normal end, or a
+        // throw — must decrement exactly once. The first attempt scattered a
+        // decrement per exit and the cycle-1 confirmation caught the count as
+        // declared-but-never-set; finally makes the invariant structural.
+        processingCount -= 1
       }
     }
 
