@@ -38,6 +38,18 @@ jobs:
       - name: Rebuild native modules for Node
         run: npm rebuild better-sqlite3
 
+      # The offline-OCR tests assert that the language data is present on disk and
+      # that nothing fetches it at runtime. That is a real requirement, so the data
+      # has to be here for the tests to be meaningful — the first CI run failed
+      # exactly these two tests because only the native gate fetched it.
+      - name: Fetch Tesseract language data
+        shell: bash
+        run: |
+          mkdir -p resources/tessdata
+          curl -sSL -o resources/tessdata/eng.traineddata \
+            https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
+          ls -l resources/tessdata
+
       - name: Typecheck
         run: npx tsc -p tsconfig.json
 
