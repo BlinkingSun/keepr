@@ -67,6 +67,7 @@ export function App() {
    *  button's indicator. Zero-contract demux: we know the ids because scan:start
    *  returned them. */
   const scanJobIds = useRef<Set<string>>(new Set())
+  const activeScanJobId = useRef<string | null>(null)
   const [dragging, setDragging] = useState(false)
 
   const offline = !hasBridge()
@@ -266,12 +267,18 @@ export function App() {
       })
     })
     const offD = on('scan:done', (e) => {
+      if (activeScanJobId.current === e.jobId) activeScanJobId.current = null
+      // Keep the id for demux until its terminal job:progress has surely passed,
+      // then prune — the set must not grow for the life of the window.
+      window.setTimeout(() => scanJobIds.current.delete(e.jobId), 30_000)
       setScanning(false)
       setScanPages((prev) => prev.map((p) => ({ ...p, state: 'done' as const })))
       setScanError(null)
       void refresh()
     })
     const offE = on('scan:error', (e) => {
+      if (activeScanJobId.current === e.jobId) activeScanJobId.current = null
+      window.setTimeout(() => scanJobIds.current.delete(e.jobId), 30_000)
       setScanning(false)
       setScanError(e.message)
     })
@@ -330,6 +337,7 @@ export function App() {
     try {
       const { jobId } = await invoke('scan:start', { deviceId: scanSelected, options })
       scanJobIds.current.add(jobId)
+      activeScanJobId.current = jobId
     } catch (e) {
       setScanning(false)
       setScanError((e as Error).message)
@@ -637,8 +645,9 @@ export function App() {
               }}
               onScan={(options) => void startScan(options)}
               onCancel={() => {
-                const id = [...scanJobIds.current].pop()
-                if (id) void invoke('scan:cancel', { jobId: id })
+                if (activeScanJobId.current) {
+                  void invoke('scan:cancel', { jobId: activeScanJobId.current })
+                }
               }}
               onClose={() => setScanOpen(false)}
             />
