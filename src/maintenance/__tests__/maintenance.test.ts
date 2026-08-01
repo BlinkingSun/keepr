@@ -31,6 +31,17 @@ import {
   SCHEMA_DIR,
 } from './harness.ts'
 
+/**
+ * Remove a temp directory, tolerating Windows file locks.
+ *
+ * Even after a connection is closed, Windows may hold the SQLite -shm handle for a
+ * moment. maxRetries makes teardown reliable instead of flaky; POSIX never needed
+ * it, which is why this only showed up on windows-latest in CI.
+ */
+async function rmTemp(dir: string): Promise<void> {
+  await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+}
+
 describe('Lane K — backup / restore / archive / trash', () => {
   // -----------------------------------------------------------------------
   // 1. Backup then restore into a fresh root
@@ -109,7 +120,7 @@ describe('Lane K — backup / restore / archive / trash', () => {
           reopened.close()
         }
       } finally {
-        await rm(freshRoot, { recursive: true, force: true })
+        await rmTemp(freshRoot)
       }
     } finally {
       await dispose(ctx, root)
@@ -161,8 +172,13 @@ describe('Lane K — backup / restore / archive / trash', () => {
         const ver = await restore(fresh, bakDir)
         assert.equal(ver.ok, false, 'restore must fail loudly when backup image is missing')
         assert.ok(ver.checks.some((c) => !c.ok && (c.detail.includes('missing') || c.name.includes('page') || c.name.includes('manifest'))))
+        // Close before the directory is removed. A FAILED verification correctly
+        // leaves the live library untouched, which means the connection is still
+        // open — and Windows refuses to unlink an open file, so the cleanup below
+        // failed with EBUSY. The test leaked the connection; restore was right.
+        fresh.close()
       } finally {
-        await rm(freshRoot, { recursive: true, force: true })
+        await rmTemp(freshRoot)
       }
     } finally {
       try {
@@ -170,7 +186,7 @@ describe('Lane K — backup / restore / archive / trash', () => {
       } catch {
         /* may already be closed */
       }
-      await rm(root, { recursive: true, force: true })
+      await rmTemp(root)
     }
   })
 
@@ -273,7 +289,7 @@ describe('Lane K — backup / restore / archive / trash', () => {
           reopened.close()
         }
       } finally {
-        await rm(freshRoot, { recursive: true, force: true })
+        await rmTemp(freshRoot)
       }
     } finally {
       try {
@@ -281,7 +297,7 @@ describe('Lane K — backup / restore / archive / trash', () => {
       } catch {
         /* */
       }
-      await rm(root, { recursive: true, force: true })
+      await rmTemp(root)
     }
   })
 
