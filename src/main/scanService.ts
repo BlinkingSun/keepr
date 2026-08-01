@@ -8,7 +8,7 @@
  * Devices are cached by id between discoveries because scan:start receives only
  * a deviceId — the renderer never handles hosts or ports directly.
  */
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ScanCaps, ScanDevice, ScanOptions } from '../shared/types.ts'
 import { discoverScanners, probeScanner, fetchCapabilities, scanAndIngest, ScanError } from '../scan/index.ts'
@@ -61,9 +61,20 @@ export const scanService = {
     if ([...liveScans.values()].some((s) => s.deviceId === deviceId)) {
       throw new Error('a scan is already running on this device')
     }
-
-    const job = await ctx.jobs.create('import', 0, { source: 'scan', deviceId })
+    // Reserve the device SYNCHRONOUSLY. The check above and jobs.create below
+    // are separated by an await, so two concurrent scan:start calls both passed
+    // the check — the audit's dual-start race. The placeholder closes the gap;
+    // it is replaced by the real entry (or removed on failure) below.
+    const reservation = `reserve:${deviceId}`
     const controller = new AbortController()
+    liveScans.set(reservation, { controller, deviceId })
+
+    let job
+    try {
+      job = await ctx.jobs.create('import', 0, { source: 'scan', deviceId })
+    } finally {
+      liveScans.delete(reservation)
+    }
     liveScans.set(job.id, { controller, deviceId })
 
     // Staged under the library so the temp files live on the same volume as
@@ -121,8 +132,26 @@ export const scanService = {
     return { ok: true }
   },
 
-  /** Crash hygiene: remove staging left by a previous run. Called at startup. */
+  /**
+   * Crash hygiene: remove ABANDONED staging only.
+   *
+   * The first version deleted all of .scan-tmp at startup — and two app
+   * instances on one library meant instance B wiped instance A's pages mid-scan
+   * (the audit's finding). Now a staging dir is swept only when no live scan in
+   * THIS process owns it AND it has been untouched for 15+ minutes, which no
+   * in-flight scan plausibly is.
+   */
   sweepTmp(ctx: AppContext): void {
-    rmSync(path.join(ctx.libraryRoot, '.scan-tmp'), { recursive: true, force: true })
+    const root = path.join(ctx.libraryRoot, '.scan-tmp')
+    let entries: string[]
+    try { entries = readdirSync(root) } catch { return }
+    const cutoff = Date.now() - 15 * 60 * 1000
+    for (const name of entries) {
+      if (liveScans.has(name)) continue
+      const dir = path.join(root, name)
+      try {
+        if (statSync(dir).mtimeMs < cutoff) rmSync(dir, { recursive: true, force: true })
+      } catch { /* raced with another instance — leave it */ }
+    }
   },
 }

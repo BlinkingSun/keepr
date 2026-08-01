@@ -132,6 +132,7 @@ export function createNewReceiptsWatcher(
 
   /** Single-flight: concurrent tick() await this. */
   let inFlight: Promise<TickResult> | null = null
+  let processingCount = 0
 
   const stability = new Map<string, StabilityObs>()
   const failedMap = new Map<string, FailedEntry>()
@@ -330,6 +331,7 @@ export function createNewReceiptsWatcher(
     if (inFlight) return inFlight
     inFlight = runTick().finally(() => {
       inFlight = null
+      processingCount = 0
     })
     return inFlight
   }
@@ -397,7 +399,12 @@ export function createNewReceiptsWatcher(
   function status(): WatcherStatus {
     return {
       watching,
-      pendingCount: [...stability.values()].filter((s) => s.streak < STABILITY_REQUIRED).length,
+      // Stabilising files PLUS anything mid-import/move. Counting only the
+      // stability queue reported 0 while a large batch was actively being
+      // ingested — a status that lies low exactly when the user is watching.
+      pendingCount:
+        [...stability.values()].filter((s) => s.streak < STABILITY_REQUIRED).length +
+        processingCount,
       failed: [...failedMap.values()].map((f) => ({ name: f.name, reason: f.reason })),
     }
   }

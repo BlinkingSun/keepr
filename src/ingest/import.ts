@@ -294,6 +294,15 @@ export async function importPagesAsItem(
     }
   } catch (e: unknown) {
     await rollbackItem(deps, itemId)
+    // The provenance blob was stored BEFORE the item existed, so rollbackItem —
+    // which releases only page blobs — left it orphaned in the content store
+    // forever (audit finding). item_source_file rows die with the item; the
+    // bytes need an explicit release, refcounted like everything else.
+    try {
+      await deps.fileStore.release(sourcePut.rel)
+    } catch {
+      /* an orphaned blob is a leak, not corruption — never mask the real error */
+    }
     throw e
   }
 

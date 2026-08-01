@@ -191,6 +191,16 @@ const routes: Record<string, Handler> = {
     return { body: archive(ctx.maintenance(), body.cutoff, body.destPath) }
   },
   'POST /trash/empty': async (ctx) => ({ body: emptyTrash(ctx.maintenance()) }),
+
+  // Headless watcher visibility. The audit could not assert the New→Old
+  // acceptance flow over HTTP without sniffing the filesystem; CI has the same
+  // problem. GET mirrors watcher:status; POST /watcher/tick forces one pass so a
+  // test does not have to sleep through the poll interval.
+  'GET /watcher': async (ctx) => ({ body: ctx.watcherStatus() }),
+  'POST /watcher/tick': async (ctx) => {
+    const r = await ctx.tickWatcher()
+    return { body: r ?? { ticked: false, reason: 'watcher not running' } }
+  },
 }
 
 /** Shared by the three export routes: they differ only in the writer. */

@@ -42,6 +42,8 @@ export interface AppContext {
   }
   /** Start auto-ingesting New Receipts. Idempotent; called once main is ready. */
   startWatcher(onActivity?: (e: { ingested: number; duplicates: number; failed: number }) => void): void
+  /** Force one watcher pass (test/API surface). Null when not running. */
+  tickWatcher(): Promise<unknown | null>
   /**
    * Ingest dependencies, created on FIRST USE rather than at startup.
    *
@@ -203,6 +205,9 @@ export function createContext(opts: CreateContextOptions): AppContext {
       })
       if (onActivity) watcher.onActivity(onActivity)
       watcher.start()
+    },
+    async tickWatcher() {
+      return watcher ? watcher.tick() : null
     },
     ingest,
     maintenance,

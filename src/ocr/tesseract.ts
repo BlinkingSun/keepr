@@ -348,6 +348,15 @@ export class TesseractOcrProvider implements OcrProvider {
       cacheMethod: 'readOnly',
       // Never hit the network for language data
       workerBlobURL: false,
+      // CRITICAL containment. Without an errorHandler, a tesseract worker-thread
+      // error (corrupt image, wasm fault) surfaces as an uncaught error on the
+      // event loop and KILLS THE PROCESS — the execution audit's live test
+      // imported a malformed JPEG and took down the whole app mid-serve. Errors
+      // routed here are logged; the recognize() promise for that job still
+      // rejects and the page is marked failed like any other OCR failure.
+      errorHandler: (err: unknown) => {
+        console.error('[keepr] tesseract worker error (contained):', (err as Error)?.message ?? err)
+      },
     }
 
     const makers: Promise<void>[] = []

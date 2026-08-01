@@ -38,6 +38,22 @@ export function parseArgs(argv: string[]): Args {
   }
 }
 
+
+/**
+ * Last-resort containment. A library app must not die because one background
+ * task threw outside its promise chain — the audit's live test lost the whole
+ * process (open WAL, unreaped jobs) to a single corrupt image. SQLite
+ * transactions keep the data safe; staying alive is strictly better than
+ * exiting mid-import. Every hit is logged loudly: these are bugs to fix, not
+ * noise to ignore.
+ */
+process.on('unhandledRejection', (reason) => {
+  console.error('[keepr] UNHANDLED REJECTION (contained):', (reason as Error)?.stack ?? reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[keepr] UNCAUGHT EXCEPTION (contained):', err.stack ?? err.message)
+})
+
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv)
   console.log(`[keepr] opening library at ${args.library}`)

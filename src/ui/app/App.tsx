@@ -68,6 +68,8 @@ export function App() {
    *  returned them. */
   const scanJobIds = useRef<Set<string>>(new Set())
   const activeScanJobId = useRef<string | null>(null)
+  const toastTimer = useRef<number | null>(null)
+  const pruneTimers = useRef<Set<number>>(new Set())
   const [dragging, setDragging] = useState(false)
 
   const offline = !hasBridge()
@@ -270,7 +272,8 @@ export function App() {
       if (activeScanJobId.current === e.jobId) activeScanJobId.current = null
       // Keep the id for demux until its terminal job:progress has surely passed,
       // then prune — the set must not grow for the life of the window.
-      window.setTimeout(() => scanJobIds.current.delete(e.jobId), 30_000)
+      const t1 = window.setTimeout(() => { scanJobIds.current.delete(e.jobId); pruneTimers.current.delete(t1) }, 30_000)
+      pruneTimers.current.add(t1)
       setScanning(false)
       setScanPages((prev) => prev.map((p) => ({ ...p, state: 'done' as const })))
       setScanError(null)
@@ -278,7 +281,8 @@ export function App() {
     })
     const offE = on('scan:error', (e) => {
       if (activeScanJobId.current === e.jobId) activeScanJobId.current = null
-      window.setTimeout(() => scanJobIds.current.delete(e.jobId), 30_000)
+      const t2 = window.setTimeout(() => { scanJobIds.current.delete(e.jobId); pruneTimers.current.delete(t2) }, 30_000)
+      pruneTimers.current.add(t2)
       setScanning(false)
       setScanError(e.message)
     })
@@ -297,7 +301,8 @@ export function App() {
         if (e.duplicates) bits.push(`${e.duplicates} duplicate${e.duplicates === 1 ? '' : 's'} archived`)
         if (e.failed) bits.push(`${e.failed} failed`)
         setWatcherNote(`New Receipts: ${bits.join(' · ')}`)
-        window.setTimeout(() => setWatcherNote(null), 6000)
+        if (toastTimer.current) window.clearTimeout(toastTimer.current)
+        toastTimer.current = window.setTimeout(() => setWatcherNote(null), 6000)
         void refresh()
       }
     })
@@ -353,6 +358,13 @@ export function App() {
       setDetail(await invoke('item:detail', { id: openItemId }))
     }
   }, [refresh, openItemId])
+
+  // Timers must die with the component: a toast or prune timer firing after
+  // unmount is a setState-on-unmounted leak (audit finding).
+  useEffect(() => () => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current)
+    for (const t of pruneTimers.current) window.clearTimeout(t)
+  }, [])
 
   const inbox = useMemo(() => folders.find((f) => f.kind === 'inbox') ?? null, [folders])
 

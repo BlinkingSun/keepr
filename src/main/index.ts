@@ -21,6 +21,22 @@ const val = (n: string) => { const i = argv.indexOf(n); return i >= 0 ? argv[i +
 
 let ctx: AppContext | null = null
 
+/**
+ * Last-resort containment. A library app must not die because one background
+ * task threw outside its promise chain — the audit's live test lost the whole
+ * process (open WAL, unreaped jobs) to a single corrupt image. SQLite
+ * transactions keep the data safe; staying alive is strictly better than
+ * exiting mid-import. Every hit is logged loudly: these are bugs to fix, not
+ * noise to ignore.
+ */
+process.on('unhandledRejection', (reason) => {
+  console.error('[keepr] UNHANDLED REJECTION (contained):', (reason as Error)?.stack ?? reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[keepr] UNCAUGHT EXCEPTION (contained):', err.stack ?? err.message)
+})
+
+
 function libraryRoot(): string {
   return val('--library') ?? path.join(app.getPath('documents'), 'KeepR')
 }

@@ -11,6 +11,14 @@ import { firstText, parseXml } from './xml.ts'
 
 /** Total time spent waiting on 503 before giving up as busy. */
 export const RETRY_BUDGET_MS = 20_000
+/**
+ * Cap on TOTAL 503 waiting across a whole job. The per-gap budget resets after
+ * every successful page, so an ADF feeding N pages each preceded by ~20s of
+ * busy-wait meant a job could stall for N x 20s with no way to call it stuck
+ * (audit finding). Warm-up laziness is one gap; a scanner that is busy before
+ * every single page is a broken scanner.
+ */
+export const RETRY_BUDGET_TOTAL_MS = 60_000
 
 /** Base delay for exponential backoff; jittered ±50%. */
 const BACKOFF_BASE_MS = 500
@@ -156,6 +164,7 @@ export async function createScanJob(
     async run(onPage) {
       let pageIndex = 0
       let busyElapsed = 0
+      let busyTotal = 0
 
       try {
         for (;;) {
@@ -181,6 +190,12 @@ export async function createScanJob(
           }
 
           if (pageRes.status === 503) {
+            if (busyTotal >= RETRY_BUDGET_TOTAL_MS) {
+              throw new ScanError(
+                'busy',
+                `Scanner spent more than ${RETRY_BUDGET_TOTAL_MS / 1000}s total busy (HTTP 503) across this job.`,
+              )
+            }
             if (busyElapsed >= RETRY_BUDGET_MS) {
               throw new ScanError(
                 'busy',
@@ -195,6 +210,7 @@ export async function createScanJob(
             const delay = Math.max(50, jittered)
             await sleepFn(delay, ac.signal)
             busyElapsed += delay
+            busyTotal += delay
             continue
           }
 
