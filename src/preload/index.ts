@@ -10,7 +10,7 @@
  * typo fails immediately and loudly instead of hanging on a channel nobody
  * handles.
  */
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc.ts'
 
 const ALLOWED = new Set<string>(IPC_CHANNELS as readonly string[])
@@ -28,6 +28,23 @@ contextBridge.exposeInMainWorld('keepr', {
       return Promise.reject(new Error(`[keepr] refused: "${channel}" is not a declared IPC channel`))
     }
     return ipcRenderer.invoke(channel, req)
+  },
+
+  /**
+   * Filesystem path for a dropped File.
+   *
+   * Electron REMOVED File.path in version 32, so a renderer can no longer read it
+   * and drag-and-drop import would silently receive nothing. webUtils is the
+   * sanctioned replacement and it only works in the preload, which is also the
+   * right boundary: the renderer gets a path only for a file the user physically
+   * dropped on the window.
+   */
+  getPathForFile: (file: File): string | null => {
+    try {
+      return webUtils.getPathForFile(file) || null
+    } catch {
+      return null
+    }
   },
 
   on: (event: string, fn: (payload: unknown) => void) => {

@@ -318,6 +318,18 @@ export interface IpcMap {
   'maint:emptyTrash': { req: void; res: { itemsPurged: number; filesReleased: number } }
 
   'shell:revealFile': { req: { rel: LibraryRelPath }; res: { ok: boolean } }
+
+  /**
+   * Native file picker for import.
+   *
+   * The renderer cannot open a file dialog itself and must never be handed a path
+   * it did not get from the user, so the dialog lives in main and returns only the
+   * paths the user actually chose.
+   */
+  'dialog:pickImportFiles': {
+    req: void
+    res: { canceled: boolean; paths: string[] }
+  }
 }
 
 export type IpcChannel = keyof IpcMap
@@ -341,6 +353,12 @@ export type IpcEventName = keyof IpcEvents
 export interface KeeprBridge {
   invoke<C extends IpcChannel>(channel: C, req: IpcReq<C>): Promise<IpcRes<C>>
   on<E extends IpcEventName>(event: E, fn: (payload: IpcEvents[E]) => void): () => void
+  /**
+   * Filesystem path for a dropped File. Electron removed File.path in v32, so this
+   * is the only way drag-and-drop can produce a path, and it must come from the
+   * preload.
+   */
+  getPathForFile(file: File): string | null
 }
 
 /** Every channel that must have a registered handler at startup. Main asserts
@@ -363,6 +381,7 @@ export const IPC_CHANNELS = [
   'customField:list', 'customField:upsert',
   'maint:backup', 'maint:restore', 'maint:archive', 'maint:emptyTrash',
   'shell:revealFile',
+  'dialog:pickImportFiles',
 ] as const satisfies readonly IpcChannel[]
 
 /* Compile-time completeness check: if a channel is added to IpcMap but not to

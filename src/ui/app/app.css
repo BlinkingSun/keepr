@@ -100,3 +100,35 @@
 .stat-flag:hover { background: var(--bg-hover); }
 .stat-flag-danger { color: var(--danger); font-weight: 600; }
 .stat-flag-warn { color: var(--warn); font-weight: 600; }
+
+/* Import button. Right of the library path, left of the view switcher — the
+   primary action belongs where the eye already is when the grid is empty. */
+.btn-primary {
+  appearance: none; border: 0; cursor: pointer;
+  background: var(--accent); color: var(--on-accent);
+  font: inherit; font-weight: 600;
+  padding: var(--sp-2) var(--sp-5); border-radius: var(--radius-md);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.55; cursor: default; }
+.titlebar-import { margin-left: auto; }
+/* The view switcher no longer needs to claim the free space. */
+.titlebar .seg { margin-left: var(--sp-4); }
+
+/* Drag-and-drop. A dashed accent border on the whole window states the target is
+   the window, not some small zone the user has to find. */
+.app-dragging { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg-base) 78%, transparent);
+  pointer-events: none;
+}
+.drop-overlay-inner {
+  text-align: center; padding: var(--sp-7) var(--sp-7);
+  border: 2px dashed var(--accent); border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+}
+.drop-overlay-title { font-size: var(--fs-xl); font-weight: 600; color: var(--accent); }
+.drop-overlay-sub { margin-top: var(--sp-3); color: var(--text-secondary); font-size: var(--fs-sm); }

@@ -18,6 +18,23 @@ import { checkIntegrity } from './db.ts'
 
 const VERSION = '0.1.0'
 
+/**
+ * Import file picker options. Extensions mirror what the ingest lane actually
+ * accepts — offering a type it will reject is a worse experience than not
+ * offering it.
+ */
+const IMPORT_DIALOG = {
+  title: 'Import receipts, documents or contacts',
+  properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+  filters: [
+    { name: 'Receipts and documents', extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'bmp', 'webp', 'pdf'] },
+    { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'bmp', 'webp'] },
+    { name: 'PDF', extensions: ['pdf'] },
+    { name: 'Contacts (vCard)', extensions: ['vcf'] },
+    { name: 'All files', extensions: ['*'] },
+  ],
+}
+
 type AnyHandler = (ctx: AppContext, req: any) => unknown | Promise<unknown>
 
 export function buildHandlers(ctx: AppContext): Record<string, AnyHandler> {
@@ -146,6 +163,16 @@ export function buildHandlers(ctx: AppContext): Record<string, AnyHandler> {
         VALUES (?,?,?,?,'user',?,?)`).run(r.kind, JSON.stringify(r.match), JSON.stringify(r.action), r.priority ?? 100, r.enabled === false ? 0 : 1, now)
       return { id: Number(info.lastInsertRowid) }
     },
+    'dialog:pickImportFiles': async () => {
+      // Lazy import so the headless --serve path never needs Electron's dialog.
+      const { dialog, BrowserWindow } = require('electron') as typeof import('electron')
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+      const res = await (win
+        ? dialog.showOpenDialog(win, IMPORT_DIALOG)
+        : dialog.showOpenDialog(IMPORT_DIALOG))
+      return { canceled: res.canceled, paths: res.filePaths }
+    },
+
     'shell:revealFile': (c, r) => {
       // Electron is imported lazily so the headless path never needs it.
       const { shell } = require('electron') as typeof import('electron')

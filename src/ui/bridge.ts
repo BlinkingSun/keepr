@@ -23,4 +23,10 @@ export const invoke = <C extends IpcChannel>(channel: C, req: IpcReq<C>): Promis
 export const on = <E extends IpcEventName>(event: E, fn: (p: IpcEvents[E]) => void): (() => void) =>
   bridge().on(event, fn)
 
+/** Path for a dropped file, or null when unavailable. */
+export const getPathForFile = (file: File): string | null => {
+  const b = window.keepr
+  return b ? b.getPathForFile(file) : null
+}
+
 export const hasBridge = (): boolean => typeof window !== 'undefined' && !!window.keepr

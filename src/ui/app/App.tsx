@@ -14,7 +14,7 @@ import type { Folder, ResolvedPage, Rotation } from '../../shared/types.ts'
 import type {
   FilterTotals, GridRow, ItemDetail, ItemPatch, ListRequest, PatchResult,
 } from '../../shared/ipc.ts'
-import { hasBridge, invoke, on } from '../bridge.ts'
+import { getPathForFile, hasBridge, invoke, on } from '../bridge.ts'
 import { NavPanel } from '../nav/index.ts'
 import { GridPanel, DEFAULT_COLUMNS, formatMoney, pruneToVisible, type ColumnState, type SortSpec } from '../grid/index.ts'
 import { ViewerPanel } from '../viewer/index.ts'
@@ -49,6 +49,8 @@ export function App() {
   const [columns, setColumns] = useState<ColumnState[]>(DEFAULT_COLUMNS)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const [importing, setImporting] = useState<{ total: number; done: number; failed: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   const offline = !hasBridge()
   // Guards against a slow response for an abandoned filter overwriting the
@@ -182,6 +184,57 @@ export function App() {
     return [...byCur.entries()].map(([currency, v]) => ({ currency, ...v }))
   }, [rows, selectedIds])
 
+  /**
+   * Import paths into the Inbox.
+   *
+   * Deliberately does NOT await OCR: the job id comes back immediately and OCR
+   * continues in the background, so a 40-page batch does not freeze the window.
+   * Progress arrives on the job:progress event and the grid refreshes as pages
+   * finish.
+   */
+  const runImport = useCallback(async (paths: string[]) => {
+    if (offline || paths.length === 0) return
+    setImporting({ total: paths.length, done: 0, failed: 0 })
+    try {
+      const res = await invoke('ingest:import', { paths, toInbox: true })
+      if (res.rejected.length) {
+        setError(
+          `${res.rejected.length} file(s) could not be read: ` +
+            res.rejected.map((r) => `${r.path.split(/[\\/]/).pop()} (${r.reason})`).join('; '),
+        )
+      }
+      // Jump to the Inbox so the imported items are actually in view — importing
+      // and then appearing to do nothing is the worst outcome.
+      changeScope(() => { setSmartFilter('inbox'); setSelectedFolder(null) })
+      await refresh()
+    } catch (e) {
+      setError((e as Error).message)
+      setImporting(null)
+    }
+  }, [offline, refresh])
+
+  const pickAndImport = useCallback(async () => {
+    try {
+      const res = await invoke('dialog:pickImportFiles', undefined)
+      if (!res.canceled && res.paths.length) await runImport(res.paths)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }, [runImport])
+
+  // Job progress drives the import indicator and clears it when work finishes.
+  useEffect(() => {
+    if (offline) return
+    return on('job:progress', (e) => {
+      if (e.status === 'done' || e.status === 'failed' || e.status === 'cancelled' || e.status === 'partial') {
+        setImporting(null)
+        void refresh()
+      } else {
+        setImporting({ total: e.totalUnits, done: e.doneUnits, failed: e.failedUnits })
+      }
+    })
+  }, [offline, refresh])
+
   const inbox = useMemo(() => folders.find((f) => f.kind === 'inbox') ?? null, [folders])
 
   const pageSrc = useCallback((page: ResolvedPage): string => {
@@ -196,7 +249,32 @@ export function App() {
   const showDetails = view === 'details' && detail != null
 
   return (
-    <div className="app">
+    <div
+      className={dragging ? 'app app-dragging' : 'app'}
+      onDragOver={(e) => {
+        // Only claim the drag when it actually carries files, so an internal
+        // row-drag is not intercepted by the window-level handler.
+        if (Array.from(e.dataTransfer.types).includes('Files')) {
+          e.preventDefault()
+          setDragging(true)
+        }
+      }}
+      onDragLeave={(e) => {
+        // Ignore leaves fired while moving between child elements.
+        if (e.currentTarget === e.target) setDragging(false)
+      }}
+      onDrop={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes('Files')) return
+        e.preventDefault()
+        setDragging(false)
+        // getPathForFile, not File.path — the latter was removed in Electron 32
+        // and reading it would silently yield undefined for every file.
+        const paths = Array.from(e.dataTransfer.files)
+          .map((f) => getPathForFile(f))
+          .filter((p): p is string => typeof p === 'string' && p.length > 0)
+        if (paths.length) void runImport(paths)
+      }}
+    >
       <header className="titlebar">
         <span className="brand">KeepR</span>
         <span className="titlebar-sub">
@@ -207,6 +285,15 @@ export function App() {
             native check failed
           </span>
         )}
+        <button
+          type="button"
+          className="btn-primary titlebar-import"
+          onClick={() => void pickAndImport()}
+          disabled={offline || importing != null}
+          title="Import receipt images, PDFs or vCards (or drag files onto the window)"
+        >
+          {importing ? `Importing ${importing.done}/${importing.total}` : 'Import'}
+        </button>
         <div className="seg" role="tablist" aria-label="View">
           {(['grid', 'thumbnail', 'details'] as ViewMode[]).map((v) => (
             <button key={v} role="tab" aria-selected={view === v}
@@ -329,6 +416,15 @@ export function App() {
           </aside>
         )}
       </div>
+
+      {dragging && (
+        <div className="drop-overlay" aria-hidden>
+          <div className="drop-overlay-inner">
+            <div className="drop-overlay-title">Drop to import</div>
+            <div className="drop-overlay-sub">Images, PDFs and vCards land in the Inbox for review</div>
+          </div>
+        </div>
+      )}
 
       <footer className="statusbar">
         <span>
