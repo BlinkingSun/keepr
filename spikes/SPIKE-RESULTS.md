@@ -40,7 +40,7 @@ This is asserted as a test, not left to an executor's judgement.
 ## Still unproven — do not assume these
 
 - `better-sqlite3` under the **Electron** ABI (spike used plain node v24). Needs
-  `electron-rebuild` and must be checked on **CT-113199**, not just here.
-- Windows NSIS packaging on CT-113199 (node not yet installed there).
+  `electron-rebuild` and must be checked on **the Windows build machine**, not just here.
+- Windows NSIS packaging on the Windows build machine (node not yet installed there).
 - Tesseract accuracy on real thermal receipts — deliberately untested; the
   `OcrProvider` seam exists so this can be swapped without rework.

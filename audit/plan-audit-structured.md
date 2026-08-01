@@ -140,7 +140,7 @@ Do not open implementation lanes until Lane 0 locks schema/money/FTS/split invar
 3. **E ∥ F ∥ G** (panels) + **D skeleton** (health + item CRUD via A)  
 4. **C, H, I, J, K**  
 5. Orchestrator integrate: App, IPC registration, D full routes  
-6. **L** on CT-113199  
+6. **L** on the Windows build machine  
 
 ---
 
@@ -201,7 +201,7 @@ Lane 0 owns **IPC contract types** under `src/shared/**` only — not the runtim
 | **better-sqlite3** | Classic native addon; `npm install` builds for **Node**, not Electron | `NODE_MODULE_VERSION` crash until `@electron/rebuild` / `install-app-deps` under **that** Electron |
 | **Mac dev** | Rebuild on darwin-arm64 under Electron; smoke `require('better-sqlite3')` **inside Electron**, open DB, assert FTS5 | “Works in node spikes” ≠ works in Electron (spikes already admit this) |
 | **sharp** | N-API prebuilds; packaging-hard: need `@img/sharp-<platform>` + libvips; **asarUnpack** for `sharp` and `@img/**` | UI launches; first thumbnail/import dies |
-| **Windows NSIS** | Must **fresh clone + `npm ci` on CT-113199** (never copy Mac `node_modules`); then Electron rebuild; then builder | Mac binaries in Windows installer → instant fail |
+| **Windows NSIS** | Must **fresh clone + `npm ci` on the Windows build machine** (never copy Mac `node_modules`); then Electron rebuild; then builder | Mac binaries in Windows installer → instant fail |
 | **Cross-build** | Do not treat `electron-builder --win` on Mac as release path with these natives | Wrong/missing `.node` / platform packages |
 | **Pins** | Exact electron + rebuild + better-sqlite3 + sharp (no `^` for ABI-critical set) | Non-reproducible “fixed after random rebuild” |
 | **Criterion 11** | “Installs and launches” is insufficient | Green packaging with dead DB/OCR/image path |

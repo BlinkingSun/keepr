@@ -1,0 +1,53 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **If this is about a receipt extracting incorrectly**, please use the
+        "Extraction problem" template instead — it asks for the right details and
+        does not ask you to upload a real receipt.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Smallest reproduction you can manage
+      placeholder: |
+        1. Import a two-page PDF
+        2. Split the receipt three ways
+        3. The folder total shows double
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: How did you get KeepR
+      options: [Release download, Built from source]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: From the title bar, or the commit if you built it.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: |
+        Console output helps. Please do NOT paste your library contents or attach
+        real receipts — they are financial records.

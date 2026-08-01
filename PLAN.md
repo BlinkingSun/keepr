@@ -125,7 +125,7 @@ lanes would have fought over them.
 | I | Receipt splitting **and combine/separate** | `src/splitting/**` | **sonnet** | 0, A |
 | J | Export: CSV, Excel, searchable PDF | `src/export/**` | grok, geometry **locked** | 0, A |
 | K | Backup / restore / archive / trash | `src/maintenance/**` | grok | 0, A |
-| L | Packaging: electron-builder, Windows NSIS on CT-113199, icon | `build/**` | **orchestrator only** | all |
+| L | Packaging: electron-builder, Windows NSIS on the Windows build machine, icon | `build/**` | **orchestrator only** | all |
 
 **Combine/separate moved from G to I.** It is a money-and-page integrity
 operation wearing a UI costume — G builds the buttons, I owns the transaction.
@@ -140,7 +140,7 @@ D's endpoint list actually spans A+B+C+H+I+J+K. Corrected:
 3. **E ∥ F ∥ G** (panels, exporting components only) **+ D skeleton** (`/health`, folder and item CRUD over A).
 4. **C, H, I, J, K** — libraries only; none may touch `src/main`, `src/api`, preload, or `package.json`.
 5. **Orchestrator integrates** — App composition, IPC registration, D's full route surface.
-6. **L** — native gate on CT-113199.
+6. **L** — native gate on the Windows build machine.
 
 **Must serialize:** `0 → all` · `A → C,H,I,J,K` · `B → C` · feature libs → D route
 fill (one writer for `src/api/**`) · panels → App compose (one direction) ·
@@ -189,7 +189,7 @@ pinned by correcting it.
 | Pins | `electron`, `better-sqlite3`, `sharp`, `@electron/rebuild` pinned **exactly**, no carets. A minor bump changes ABI expectations and produces "it fixed itself after a rebuild" |
 | Rebuild | `better-sqlite3` builds for Node on install; it must be rebuilt for the Electron ABI |
 | asar | `sharp`, `@img/**`, `better-sqlite3`, `tesseract.js`, `tesseract.js-core`, and `resources/tessdata` are **unpacked**. Left inside the archive the app launches and dies on first import |
-| Windows | **Fresh clone + `npm ci` on CT-113199.** Never copy macOS `node_modules` — Mac binaries in a Windows installer fail instantly |
+| Windows | **Fresh clone + `npm ci` on the Windows build machine.** Never copy macOS `node_modules` — Mac binaries in a Windows installer fail instantly |
 | Cross-build | `electron-builder --win` on macOS is **not** the release path for these natives |
 | Gate | `npm ci` → rebuild → `abi:check` under Electron → NSIS → install → import image + PDF → OCR job reaches `done` → one export, **with the network blocked** |
 

@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest something KeepR should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the README's "What works today" table first — several large features
+        (scanner capture, virtual printer, reporting, accounting exports) are known
+        gaps rather than oversights, and are already on the list.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The task, not the feature. It often has a simpler answer.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like KeepR to do
+    validations:
+      required: true
+  - type: dropdown
+    id: offline
+    attributes:
+      label: Does this need network access at runtime?
+      description: |
+        KeepR is offline-first as a hard rule. Features needing a network call are
+        not automatically rejected, but they must be optional and off by default.
+      options: [No, "Yes — and I understand it must be optional", Not sure]
+    validations:
+      required: true

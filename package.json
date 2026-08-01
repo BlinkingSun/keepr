@@ -2,8 +2,7 @@
   "name": "keepr",
   "productName": "KeepR",
   "version": "0.1.0",
-  "description": "Offline-first receipt, expense, and document management",
-  "private": true,
+  "description": "Offline-first receipt, expense and document management. Local SQLite library, bundled OCR, no cloud.",
   "author": "Joshua Roberts",
   "license": "MIT",
   "main": "dist/main/index.js",
@@ -18,7 +17,9 @@
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "test:schema": "npm run rebuild:node --silent && node --experimental-strip-types spikes/schema-verify.ts",
-    "package:mac": "npm run rebuild:electron --silent && npm run build && electron-builder --mac --arm64"
+    "package:mac": "npm run rebuild:electron --silent && npm run build && electron-builder --mac --arm64",
+    "corpus": "node --experimental-strip-types spikes/corpus/generate.ts .corpus",
+    "corpus:analyze": "npm run rebuild:node --silent && node --experimental-strip-types spikes/corpus/analyze.ts .corpus .corpus-lib"
   },
   "dependencies": {
     "better-sqlite3": "11.8.1",
@@ -97,5 +98,27 @@
     "extraMetadata": {
       "main": "dist/main/index.js"
     }
+  },
+  "keywords": [
+    "receipts",
+    "expenses",
+    "ocr",
+    "offline-first",
+    "electron",
+    "sqlite",
+    "tesseract",
+    "document-management",
+    "bookkeeping"
+  ],
+  "homepage": "https://github.com/BlinkingSun/keepr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BlinkingSun/keepr.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BlinkingSun/keepr/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

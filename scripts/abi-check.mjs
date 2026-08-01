@@ -10,7 +10,7 @@
  *   npm run abi:check:node    -> plain node (fast dev signal)
  *   npm run abi:check         -> inside Electron (the one that gates a release)
  *
- * On CT-113199 it must pass under Electron, offline, after a clean `npm ci`
+ * On the Windows build machine it must pass under Electron, offline, after a clean `npm ci`
  * plus electron-rebuild. Exit code is the gate: 0 pass, 1 fail.
  */
 import { existsSync, readdirSync } from 'node:fs'

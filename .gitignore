@@ -3,3 +3,9 @@ dist/
 *.log
 resources/tessdata/*.traineddata
 release/
+.DS_Store
+**/.DS_Store
+# Raw agent build transcripts — noisy working artifacts, not documentation.
+audit/exec-lane-*.log
+.corpus/
+.corpus-lib/

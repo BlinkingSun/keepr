@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A PR that supersedes another cancels its predecessor's run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Do not cancel the whole matrix when one OS fails — a Windows-only native
+      # module problem is exactly what this matrix exists to surface, and losing
+      # the macOS result at the same time hides whether it is platform-specific.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # --ignore-scripts because better-sqlite3 compiles for NODE by default, and
+      # on some runners the source build needs toolchain components that are not
+      # present. The test script rebuilds it for Node itself.
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild native modules for Node
+        run: npm rebuild better-sqlite3
+
+      - name: Typecheck
+        run: npx tsc -p tsconfig.json
+
+      - name: Unit tests
+        run: node --experimental-strip-types --test "src/**/__tests__/*.ts"
+
+      - name: Schema invariants
+        run: node --experimental-strip-types spikes/schema-verify.ts
+
+      - name: Money allocator invariants
+        run: node --experimental-strip-types spikes/allocate-verify.ts
+
+  # A separate job because it needs Electron and a rebuild for a different ABI, and
+  # mixing the two in one job means constantly rebuilding the native modules.
+  native-gate:
+    name: Native + offline gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Fetch Electron binary
+        run: node node_modules/electron/install.js
+
+      - name: Rebuild natives for the Electron ABI
+        run: npx electron-builder install-app-deps
+
+      # Language data is not in the repo (5 MB binary), so fetch it here. The
+      # gate's whole purpose is proving OCR works with NO network at runtime, which
+      # is a different thing from fetching the model at build time.
+      - name: Fetch Tesseract language data
+        shell: bash
+        run: |
+          mkdir -p resources/tessdata
+          curl -sSL -o resources/tessdata/eng.traineddata \
+            https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
+          ls -l resources/tessdata
+
+      - name: ABI + offline gate under Electron
+        run: npx electron scripts/abi-check.mjs

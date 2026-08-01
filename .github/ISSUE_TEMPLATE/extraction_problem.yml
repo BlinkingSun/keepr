@@ -1,0 +1,68 @@
+name: Extraction problem
+description: A receipt's fields were read wrong or missed
+labels: [extraction]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Please do not attach the receipt
+
+        Receipts are financial records, and redacting them removes the amounts that
+        are the whole point. Describe the layout instead — the corpus is synthetic
+        deliberately and can represent any format you can put into words.
+
+        If you can add a failing case to `spikes/corpus/generate.ts`, that is both
+        the best bug report and most of the fix.
+  - type: textarea
+    id: layout
+    attributes:
+      label: Receipt layout, in words
+      description: The lines that matter, with amounts changed to fictional ones.
+      placeholder: |
+        ACME SUPPLY
+        03/11/2026
+        SUBTOTAL   100.00
+        LEVY 2%      2.00
+        TAX 8.25%    8.25
+        TOTAL      110.25
+        VISA ****1234
+    validations:
+      required: true
+  - type: input
+    id: field
+    attributes:
+      label: Which field was wrong
+      placeholder: total / tax / date / vendor / payment type
+    validations:
+      required: true
+  - type: input
+    id: expected
+    attributes:
+      label: Expected value
+      placeholder: "110.25"
+    validations:
+      required: true
+  - type: input
+    id: actual
+    attributes:
+      label: What KeepR produced
+      placeholder: "100.00, or blank"
+    validations:
+      required: true
+  - type: dropdown
+    id: quality
+    attributes:
+      label: Image quality
+      options:
+        - Clean scan
+        - Phone photo, good light
+        - Phone photo, poor light or skewed
+        - Faded thermal paper
+        - Crumpled or damaged
+    validations:
+      required: true
+  - type: input
+    id: confidence
+    attributes:
+      label: Was it flagged?
+      description: Did the row show a flag, and did the field show a confidence percentage?
