@@ -27,17 +27,28 @@ interface NodeRequire {
  * correctly scoped when present, so prefer it and never construct a second one.
  */
 export const nodeRequire: NodeRequire = (() => {
-  // CJS bundle (Electron main / preload): the real thing is already here.
-  const g = globalThis as { require?: NodeRequire }
-  if (typeof g.require === 'function') return g.require
+  // CJS (Electron main and preload, after esbuild): `require` is a MODULE-SCOPED
+  // binding, not a property of globalThis. Checking globalThis.require was the
+  // first attempt and it silently failed in the packaged app — the shim fell all
+  // the way through to a cwd-anchored createRequire, which resolves relative to
+  // wherever the user launched the exe from, so better-sqlite3 could not be found
+  // and the app started and then did nothing at all. No output, no window, no
+  // error: the worst possible failure to diagnose.
+  //
+  // `typeof require` rather than `require` directly, so this is safe under ESM
+  // where the binding does not exist.
+  if (typeof require === 'function') return require as unknown as NodeRequire
 
-  // ESM: build one from this module's own URL.
+  // ESM (node --experimental-strip-types): build one from this module's URL.
+  // Note esbuild rewrites import.meta to {} in CJS output, so .url can be
+  // undefined even when import.meta itself appears defined.
   const url = typeof import.meta !== 'undefined' ? import.meta.url : undefined
   if (url) return createRequire(url) as NodeRequire
 
-  // Neither available. Fall back to the working directory so the message names
-  // the real problem instead of surfacing as "filename must be a string".
-  return createRequire(`${process.cwd()}/__keepr_require_anchor__.js`) as NodeRequire
+  throw new Error(
+    'KeepR: no module loader available. Neither a CommonJS require nor ' +
+      'import.meta.url is present, so native modules cannot be located.',
+  )
 })()
 
 /** Resolve a module path without loading it. Same dual-runtime concern. */
