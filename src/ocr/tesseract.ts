@@ -285,7 +285,13 @@ export class TesseractOcrProvider implements OcrProvider {
         generation,
         msElapsed: Date.now() - t0,
       }
-    } catch (e) {
+    } catch (raw) {
+      // tesseract.js rejects with a STRING, not an Error ('Error: Error
+      // attempting to read image.'), proven by the corrupt-JPEG fixture below.
+      // Normalising here — at the seam we own — means every consumer of
+      // OcrProvider gets a real Error with a usable .message, and the
+      // blank-page/abort classifiers below work on string rejections too.
+      const e = asError(raw)
       if (aborted || signal?.aborted || isAbort(e)) throw abortError()
       // Empty / failed OCR of a blank page: return empty result, do not throw
       if (isEmptyOcrError(e)) {
@@ -418,6 +424,21 @@ function abortError(): Error {
   const e = new Error('Aborted')
   e.name = 'AbortError'
   return e
+}
+
+/**
+ * Coerce an unknown rejection into an Error without losing the original.
+ * tesseract.js worker failures arrive as strings; the OcrProvider contract
+ * promises Errors, and `(e as Error).message` on a string yields undefined —
+ * which is how a real failure reason turns into "undefined" in a job row.
+ */
+function asError(e: unknown): Error {
+  if (e instanceof Error) return e
+  const text = typeof e === 'string' ? e : (() => { try { return JSON.stringify(e) } catch { return String(e) } })()
+  // Strip tesseract's doubled 'Error: ' prefix so messages read cleanly.
+  const err = new Error(String(text).replace(/^Error:\s*/, ''))
+  err.cause = e
+  return err
 }
 
 function isAbort(e: unknown): boolean {

@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createContext } from '../../main/context.ts'
 import { createNewReceiptsWatcher } from '../watchFolders.ts'
-import { createImagePool } from '../../workers/imagePool.ts'
+import { createImagePool, type ImagePool } from '../../workers/imagePool.ts'
 import type { OcrProvider } from '../../shared/types.ts'
 import sharp from 'sharp'
 
@@ -29,14 +29,16 @@ test('pendingCount counts in-flight work, and settles to zero', async () => {
   const realPool = createImagePool()
   // Slow the SYNCHRONOUS import path (thumbnails are awaited inside importFiles;
   // OCR is not — the watcher imports with awaitOcr:false).
-  const slowPool = new Proxy(realPool, {
-    get(t, k) {
-      if (k === 'thumbnail')
-        return async (...a: unknown[]) => {
+  const slowPool: ImagePool = new Proxy(realPool, {
+    get(target, prop, receiver) {
+      if (prop === 'thumbnail') {
+        const slow: ImagePool['thumbnail'] = async (absPath, opts) => {
           await new Promise((r) => setTimeout(r, 300))
-          return (t as never)['thumbnail'](...(a as [never]))
+          return target.thumbnail(absPath, opts)
         }
-      return (t as never)[k]
+        return slow
+      }
+      return Reflect.get(target, prop, receiver)
     },
   })
   const root = mkdtempSync(path.join(tmpdir(), 'keepr-pending-'))
