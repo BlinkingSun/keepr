@@ -381,6 +381,16 @@ export interface IpcMap {
    *  New Receipts so an unprocessed scan stays visible as unprocessed. */
   'scan:start': { req: { deviceId: string; options: ScanOptions }; res: { jobId: string } }
   'scan:cancel': { req: { jobId: string }; res: { ok: boolean } }
+  /**
+   * N page files -> ONE multi-page item. importFiles creates one item PER file,
+   * which made "a 2-page ADF scan becomes one 2-page receipt" impossible — the
+   * audit caught that no owned API existed for it. Scanning composes with this;
+   * it is also useful for stitching a photographed multi-page receipt by hand.
+   */
+  'ingest:importPagesAsItem': {
+    req: { paths: string[]; targetFolderId?: number; toInbox?: boolean }
+    res: { itemId: number; pageCount: number; jobId: string }
+  }
 }
 
 export type IpcChannel = keyof IpcMap
@@ -442,6 +452,7 @@ export const IPC_CHANNELS = [
   'watcher:status',
   'shell:openPath',
   'scan:discover', 'scan:probe', 'scan:capabilities', 'scan:start', 'scan:cancel',
+  'ingest:importPagesAsItem',
 ] as const satisfies readonly IpcChannel[]
 
 /* Compile-time completeness check: if a channel is added to IpcMap but not to

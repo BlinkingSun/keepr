@@ -56,3 +56,15 @@ Do NOT touch src/shared/**, src/ui/**, src/ingest/**, src/scan/**, package.json.
 
 ## Report
 DONE|OPEN|BLOCKED / FILES / TESTS / DECISIONS / BLOCKERS
+
+## AUDIT REVISIONS (binding)
+
+1. Unknown/empty sort whitelist result → fall back to the DEFAULT order
+   (txn_date DESC, id ASC), never an empty ORDER BY fragment. Hostile-key test
+   asserts the default order actually applies.
+2. thumbRelPath subselect MUST read from v_item_pages (split children resolve
+   their origin's image) — a naive `page WHERE item_id=i.id` returns blank for
+   children. Explicit test: split child's thumb equals origin's.
+3. needsReview totals: apply the SAME predicate to the summable/totals path —
+   the status bar must describe the filtered rows. Test: totals under
+   filter=needsReview cover only flagged items.

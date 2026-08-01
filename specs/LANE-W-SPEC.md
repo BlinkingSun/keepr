@@ -96,3 +96,40 @@ Typecheck must stay clean (ignore other lanes' mid-flight errors outside your pa
 
 ## Report
 DONE|OPEN|BLOCKED / FILES / TESTS (real counts) / DECISIONS / BLOCKERS
+
+## AUDIT REVISIONS (binding — from the batch-2 plan audit)
+
+1. **The Old⟺library invariant, stated once:** a file reaches Old Receipts if and
+   only if its content is committed to the library. importFiles NEVER moves
+   anything; only the WATCHER moves, and only after item-created-or-duplicate.
+2. **Symlink containment (file-loss class):** walkForImportable resolves realpath
+   per entry and REFUSES anything outside the walk root; the watcher additionally
+   refuses to move/unlink any path whose realpath is not under newDir. A symlink
+   in New pointing at the user's only original elsewhere must be ingested-by-copy
+   at most, never moved, never unlinked. Test with an out-of-tree symlink.
+3. **Single-flight tick:** overlapping tick() (poll + fs.watch hint) must coalesce
+   — a busy flag; concurrent callers await the in-flight pass. Test that two
+   concurrent tick() calls produce one import batch.
+4. **Serialize per-file import→verify→move** inside a tick; collision naming uses
+   an exclusive-create retry loop (open 'wx' / COPYFILE_EXCL semantics), never
+   check-then-rename. Test EEXIST retry.
+5. **Stability gate = 3 consecutive identical (size, mtimeMs) observations**, not
+   2 — preallocate-then-fill copiers defeat 2. Test a growing file across ticks.
+6. **Dedupe key = ORIGINAL SOURCE BYTES via migration 002 (`item_source_file`).**
+   importFiles: put() the original file's bytes into the store (PDFs and vCards
+   included — the original document is preserved, not only rasters), record
+   {source_sha256, source_relpath, original_name} for EVERY created item, and
+   skipDuplicates consults item_source_file.source_sha256 — NOT page.content_hash.
+   This makes PDF and vCard dedupe correct and uniform. PDFs: all-or-nothing —
+   an item whose pages partially rasterized must be rolled back (item deleted,
+   job unit failed), never half-imported then archived.
+7. **New API `importPagesAsItem(deps, {paths, targetFolderId?, toInbox?})`** →
+   ONE item with N pages in order, one source_file row per... use the FIRST page's
+   source or a combined hash? Decision: record source_sha256 of each page file is
+   impossible (one row per item) — hash the CONCATENATION of page hashes
+   (sha256 of joined per-file sha256s, documented) so a re-scan of identical pages
+   dedupes. IPC channel 'ingest:importPagesAsItem' already in the contract; you
+   implement the ingest function + wire the handler is the orchestrator's.
+   Tests: 3 files → 1 item, 3 pages, seq order; OCR queued per page.
+8. vcf files: watcher ingests them (dedupe now works via source hash); unchanged
+   otherwise.

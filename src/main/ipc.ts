@@ -90,6 +90,9 @@ export function buildHandlers(ctx: AppContext): Record<string, AnyHandler> {
         paths: r.paths,
         ...(r.targetFolderId === undefined ? {} : { targetFolderId: r.targetFolderId }),
         ...(r.toInbox === undefined ? {} : { toInbox: r.toInbox }),
+        // The audit caught this dropped on the floor: the contract declared it
+        // and neither transport forwarded it.
+        ...(r.skipDuplicates === undefined ? {} : { skipDuplicates: r.skipDuplicates }),
       }),
     'page:import': async (c, r) => {
       const res = await importFiles(c.ingest(), { paths: r.paths, targetFolderId: undefined as never })
@@ -200,6 +203,7 @@ export function buildHandlers(ctx: AppContext): Record<string, AnyHandler> {
     'scan:capabilities': notYet('S', 'Scanner capabilities'),
     'scan:start': notYet('S', 'Scanning'),
     'scan:cancel': notYet('S', 'Scan cancel'),
+    'ingest:importPagesAsItem': notYet('W', 'Multi-page item import'),
 
     'shell:revealFile': (c, r) => {
       // Electron is imported lazily so the headless path never needs it.
@@ -230,9 +234,24 @@ export function registerIpc(ipcMain: IpcMain, ctx: AppContext): void {
   console.log(`[keepr] registered ${IPC_CHANNELS.length} IPC channels`)
 }
 
-/** Push job progress to the renderer so long imports can show real movement. */
-export function wireEvents(win: BrowserWindow, ctx: AppContext): () => void {
-  return ctx.jobs.onProgress((e) => {
+/**
+ * Push main-side events to the renderer.
+ *
+ * Also exposes a generic emitter the scan orchestration and folder watcher use at
+ * integrate — the audit caught that only job:progress was forwarded, so the
+ * contract's scan:* and watcher:activity events could never reach the UI.
+ */
+export function wireEvents(win: BrowserWindow, ctx: AppContext): {
+  dispose(): void
+  emit(channel: 'scan:progress' | 'scan:done' | 'scan:error' | 'watcher:activity' | 'item:changed', payload: unknown): void
+} {
+  const offJobs = ctx.jobs.onProgress((e) => {
     if (!win.isDestroyed()) win.webContents.send('job:progress', e)
   })
+  return {
+    dispose: offJobs,
+    emit(channel, payload) {
+      if (!win.isDestroyed()) win.webContents.send(channel, payload)
+    },
+  }
 }

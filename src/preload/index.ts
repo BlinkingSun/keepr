@@ -20,6 +20,13 @@ const EVENTS = new Set([
   'folder:changed',
   'ocr:pageDone',
   'library:opened',
+  // Batch 2. The audit caught that these were declared in the contract but not
+  // allowlisted here — the renderer would have registered listeners that could
+  // never fire, and scan progress would simply never appear.
+  'scan:progress',
+  'scan:done',
+  'scan:error',
+  'watcher:activity',
 ])
 
 contextBridge.exposeInMainWorld('keepr', {

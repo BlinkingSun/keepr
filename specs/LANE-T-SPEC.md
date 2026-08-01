@@ -55,3 +55,15 @@ Run: node --experimental-strip-types --test src/ui/thumbs/__tests__/*.ts
 
 ## Report
 DONE|OPEN|BLOCKED / FILES / TESTS / DECISIONS / BLOCKERS
+
+## AUDIT REVISIONS (binding)
+
+1. Column math must account for grid GAP explicitly:
+   cols = max(1, floor((width + gap) / (minCard + gap))); lock with tests at
+   boundary widths (e.g. exactly 2×minCard+gap, one px less, ultrawide 3840).
+2. Mount budget test at 3840px width × 10k items stays well under 100 cards.
+3. nav2d: down from a full last row when the next row is partial clamps to the
+   LAST ITEM (not empty slot); test. Home/End map to first/last item.
+4. Fluid row height: cards keep the 4:5 thumb box as the column width flexes —
+   layout module exposes rowHeightFor(colWidth) and the window math consumes it;
+   test two widths produce consistent windows.

@@ -132,6 +132,7 @@ const routes: Record<string, Handler> = {
       ...(body.targetFolderId === undefined ? {} : { targetFolderId: body.targetFolderId }),
       ...(body.toInbox === undefined ? {} : { toInbox: body.toInbox }),
       ...(body.awaitOcr === undefined ? {} : { awaitOcr: body.awaitOcr }),
+      ...(body.skipDuplicates === undefined ? {} : { skipDuplicates: body.skipDuplicates }),
     })
     return { status: 201, body: res }
   },

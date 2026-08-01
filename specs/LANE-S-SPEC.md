@@ -96,3 +96,28 @@ Run: node --experimental-strip-types --test src/scan/__tests__/*.ts
 ## Report
 DONE|OPEN|BLOCKED / FILES / TESTS / DECISIONS / BLOCKERS — include which fixture
 vendors you modeled and any protocol corners you had to guess.
+
+## AUDIT REVISIONS (binding — from the batch-2 plan audit)
+
+1. **Scan staging order (CRITICAL):** pages are written to a TEMP dir inside the
+   library (e.g. `<library>/.scan-tmp/<jobId>/`), ingested as ONE multi-page item
+   via ingest importPagesAsItem, and moved into Old Receipts ONLY after the item
+   is committed. Crash before commit leaves temp (cleaned on startup), never a
+   file in Old without an item. A scan whose INGEST fails moves its pages to New
+   Receipts (visible as unprocessed). Your scanToFiles therefore writes to the
+   provided tmpDir; the move/ingest choreography is the orchestration function you
+   deliver (`scanAndIngest(deps, device, options, io)`), fully unit-tested with a
+   stub ingest.
+2. **XML safety:** construct fast-xml-parser with `processEntities: false` (and no
+   external entity expansion) — scanner responses are untrusted input.
+3. **More capability fixtures:** add an ADF-only-PDF-format device (we must refuse
+   with a typed 'protocol' error mentioning format, not crash) and a device
+   requiring auth (401 → typed 'not-reachable' variant with honest message).
+4. **503 budget:** total retry budget ≥20s with jittered backoff (warm-up laser
+   printers really do 503 that long); still cancelable mid-backoff.
+5. **ADF-empty encodings:** fixtures for BOTH ScannerStatus AdfEmpty and the
+   409-on-ScanJobs variant some vendors use.
+6. **Progress channel discipline:** device-phase progress goes ONLY on scan:*
+   events (jobId = the library job id, passed in by orchestration); the job row's
+   detail is `{source:'scan', deviceId, pages}` so the UI can demux Import vs
+   Scan progress by detail.source.
