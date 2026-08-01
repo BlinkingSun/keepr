@@ -401,3 +401,388 @@ describe('Lane A repositories', () => {
     )
   })
 })
+
+// ── Lane R: complete sorting + thumbnails + filter-totals consistency ────────
+
+describe('Lane R: sorting, thumbnails, filter totals', () => {
+  let fx: Fixture
+
+  beforeEach(() => {
+    fx = openFixture()
+  })
+
+  function seedCategory(name: string): number {
+    return Number(
+      fx.raw.prepare(`INSERT INTO category(name, created_at) VALUES (?, ?)`).run(name, NOW)
+        .lastInsertRowid,
+    )
+  }
+
+  function seedPayment(name: string): number {
+    return Number(
+      fx.raw.prepare(`INSERT INTO payment_type(name, created_at) VALUES (?, ?)`).run(name, NOW)
+        .lastInsertRowid,
+    )
+  }
+
+  // Spec §1: categoryName asc — non-null NOCASE first, nulls last, stable by id.
+  it('R1. sort categoryName asc: non-null NOCASE first, nulls last, stable by id', () => {
+    const catZebra = seedCategory('zebra')
+    const catApple = seedCategory('Apple')
+    const catBanana = seedCategory('banana')
+
+    // Deliberate insert order so id order ≠ category order.
+    const idNull1 = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: null,
+      txnDate: '2026-01-01',
+    })
+    const idZebra = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: catZebra,
+      txnDate: '2026-01-02',
+    })
+    const idNull2 = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: null,
+      txnDate: '2026-01-03',
+    })
+    const idApple = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: catApple,
+      txnDate: '2026-01-04',
+    })
+    const idBanana = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: catBanana,
+      txnDate: '2026-01-05',
+    })
+
+    const res = fx.repos.items.list({
+      folderId: fx.folderUser,
+      sort: [{ column: 'categoryName', dir: 'asc' }],
+    })
+    const ids = res.rows.map((r) => r.itemId)
+    // Apple, banana, zebra (NOCASE), then nulls stable by id
+    assert.deepEqual(ids, [idApple, idBanana, idZebra, idNull1, idNull2])
+    assert.ok(res.rows.slice(0, 3).every((r) => r.categoryName != null))
+    assert.ok(res.rows.slice(3).every((r) => r.categoryName == null))
+  })
+
+  it('R1b. sort categoryName desc: non-null NOCASE desc first, nulls still last', () => {
+    const catZebra = seedCategory('zebra')
+    const catApple = seedCategory('Apple')
+    const catBanana = seedCategory('banana')
+
+    const idNull = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: null,
+    })
+    const idZebra = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: catZebra,
+    })
+    const idApple = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: catApple,
+    })
+    const idBanana = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      categoryId: catBanana,
+    })
+
+    const res = fx.repos.items.list({
+      folderId: fx.folderUser,
+      sort: [{ column: 'categoryName', dir: 'desc' }],
+    })
+    const ids = res.rows.map((r) => r.itemId)
+    // zebra, banana, Apple (NOCASE desc), then null last
+    assert.deepEqual(ids, [idZebra, idBanana, idApple, idNull])
+    assert.equal(res.rows[res.rows.length - 1]?.categoryName, null)
+  })
+
+  // Spec §2: paymentTypeName and taxTotalMinor both directions.
+  it('R2. paymentTypeName and taxTotalMinor sort both directions, nulls last', () => {
+    const cash = seedPayment('Cash')
+    const visa = seedPayment('Visa')
+    const amex = seedPayment('amex')
+
+    const idNullPay = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      taxMinor: 50,
+      vendorId: fx.vendorId,
+      paymentTypeId: null,
+    })
+    const idVisa = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 200,
+      taxMinor: 10,
+      vendorId: fx.vendorId,
+      paymentTypeId: visa,
+    })
+    const idCash = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 300,
+      taxMinor: null,
+      vendorId: fx.vendorId,
+      paymentTypeId: cash,
+    })
+    const idAmex = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 400,
+      taxMinor: 99,
+      vendorId: fx.vendorId,
+      paymentTypeId: amex,
+    })
+
+    const payAsc = fx.repos.items.list({
+      folderId: fx.folderUser,
+      sort: [{ column: 'paymentTypeName', dir: 'asc' }],
+    })
+    assert.deepEqual(
+      payAsc.rows.map((r) => r.itemId),
+      [idAmex, idCash, idVisa, idNullPay],
+    )
+
+    const payDesc = fx.repos.items.list({
+      folderId: fx.folderUser,
+      sort: [{ column: 'paymentTypeName', dir: 'desc' }],
+    })
+    assert.deepEqual(
+      payDesc.rows.map((r) => r.itemId),
+      [idVisa, idCash, idAmex, idNullPay],
+    )
+
+    const taxAsc = fx.repos.items.list({
+      folderId: fx.folderUser,
+      sort: [{ column: 'taxTotalMinor', dir: 'asc' }],
+    })
+    assert.deepEqual(
+      taxAsc.rows.map((r) => r.itemId),
+      [idVisa, idNullPay, idAmex, idCash], // 10, 50, 99, null last
+    )
+    assert.equal(taxAsc.rows[taxAsc.rows.length - 1]?.taxTotalMinor, null)
+
+    const taxDesc = fx.repos.items.list({
+      folderId: fx.folderUser,
+      sort: [{ column: 'taxTotalMinor', dir: 'desc' }],
+    })
+    assert.deepEqual(
+      taxDesc.rows.map((r) => r.itemId),
+      [idAmex, idNullPay, idVisa, idCash], // 99, 50, 10, null last
+    )
+  })
+
+  // Spec §3 + audit §1: hostile key ignored → DEFAULT order (txn_date DESC, id ASC).
+  it('R3. hostile sort key is ignored; default order applies; no throw', () => {
+    const a = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+      txnDate: '2026-03-01',
+    })
+    const b = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 200,
+      vendorId: fx.vendorId,
+      txnDate: '2026-06-01',
+    })
+    const c = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 300,
+      vendorId: fx.vendorId,
+      txnDate: '2026-01-01',
+    })
+    // Same date → stable id ASC among ties under default.
+    const d = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 400,
+      vendorId: fx.vendorId,
+      txnDate: '2026-06-01',
+    })
+
+    const hostile = fx.repos.items.list({
+      folderId: fx.folderUser,
+      sort: [{ column: '1; DROP TABLE item', dir: 'asc' }],
+    })
+    assert.equal(hostile.rows.length, 4)
+    // Default: txn_date DESC, id ASC → b then d (same date, id asc), then a, then c
+    assert.deepEqual(
+      hostile.rows.map((r) => r.itemId),
+      [b, d, a, c],
+    )
+
+    // Table still exists (injection was not interpolated).
+    const count = (
+      fx.raw.prepare(`SELECT COUNT(*) AS c FROM item`).get() as { c: number }
+    ).c
+    assert.ok(count >= 4)
+
+    // Explicit default (no sort) matches hostile fallback.
+    const def = fx.repos.items.list({ folderId: fx.folderUser })
+    assert.deepEqual(
+      def.rows.map((r) => r.itemId),
+      hostile.rows.map((r) => r.itemId),
+    )
+  })
+
+  // Spec §4 + audit §2: thumbRelPath via v_item_pages; split child = origin.
+  it('R4. thumbRelPath: page item populated, manual null, split child = origin', () => {
+    // Manual item: create via repo, no pages.
+    const manual = fx.repos.items.create({ folderId: fx.folderUser, type: 'receipt' })
+    const withPage = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 100,
+      vendorId: fx.vendorId,
+    })
+    fx.raw
+      .prepare(
+        `INSERT INTO page(item_id, seq, file_relpath, thumb_relpath, content_hash, ocr_status, created_at)
+         VALUES (?, 1, 'images/full.jpg', 'images/thumb.jpg', 'sha-thumb', 'done', ?)`,
+      )
+      .run(withPage, NOW)
+    // Second page later in seq — first by seq wins.
+    fx.raw
+      .prepare(
+        `INSERT INTO page(item_id, seq, file_relpath, content_hash, ocr_status, created_at)
+         VALUES (?, 2, 'images/page2.jpg', 'sha-p2', 'done', ?)`,
+      )
+      .run(withPage, NOW)
+
+    const { originId, childIds } = seedSplitReceipt(fx)
+    // Origin was seeded with images/o1.jpg and no thumb_relpath → COALESCE → file.
+
+    const res = fx.repos.items.list({ folderId: fx.folderUser, includeSuperseded: true })
+    const byId = Object.fromEntries(res.rows.map((r) => [r.itemId, r]))
+
+    assert.equal(byId[manual.itemId]?.thumbRelPath, null, 'manual item has no pages')
+    assert.equal(
+      byId[withPage]?.thumbRelPath,
+      'images/thumb.jpg',
+      'prefers thumb_relpath over file_relpath',
+    )
+
+    const originThumb = byId[originId]?.thumbRelPath
+    assert.equal(originThumb, 'images/o1.jpg')
+    for (const cid of childIds) {
+      assert.equal(
+        byId[cid]?.thumbRelPath,
+        originThumb,
+        `split child ${cid} must show origin's thumb, not blank`,
+      )
+      // Children own zero page rows — prove the naive path would be empty.
+      const ownPages = (
+        fx.raw.prepare(`SELECT COUNT(*) AS c FROM page WHERE item_id = ?`).get(cid) as {
+          c: number
+        }
+      ).c
+      assert.equal(ownPages, 0, 'child must own no page rows')
+    }
+  })
+
+  // Spec §5: bounded query still ≤6 at 5,000 rows (thumb subselect is inline).
+  it('R5. list() query count still ≤6 at 5,000 rows with thumbRelPath', () => {
+    const insertItem = fx.raw.prepare(
+      `INSERT INTO item(folder_id, type, created_at, modified_at) VALUES (?, 'receipt', ?, ?)`,
+    )
+    const insertRd = fx.raw.prepare(
+      `INSERT INTO receipt_data(item_id, txn_date, vendor_id, total_minor, currency, category_id)
+       VALUES (?, '2026-01-01', ?, ?, 'USD', ?)`,
+    )
+    const insertPage = fx.raw.prepare(
+      `INSERT INTO page(item_id, seq, file_relpath, content_hash, ocr_status, created_at)
+       VALUES (?, 1, ?, 'sha', 'done', ?)`,
+    )
+    const seed = fx.raw.transaction(() => {
+      for (let i = 0; i < 5000; i++) {
+        const id = Number(insertItem.run(fx.folderUser, NOW, NOW).lastInsertRowid)
+        insertRd.run(id, fx.vendorId, 100 + (i % 50), fx.categoryId)
+        insertPage.run(id, `images/r${i}.jpg`, NOW)
+      }
+    })
+    seed()
+
+    fx.queryCount.reset()
+    const res = fx.repos.items.list({
+      folderId: fx.folderUser,
+      limit: 10_000,
+      sort: [{ column: 'categoryName', dir: 'asc' }],
+    })
+    const n = fx.queryCount.n
+
+    assert.equal(res.total, 5000)
+    assert.ok(res.rows.every((r) => r.thumbRelPath != null), 'thumbs populated without N+1')
+    assert.ok(
+      n <= 6,
+      `expected ≤6 queries for 5000 rows with thumb subselect, got ${n}`,
+    )
+  })
+
+  // Spec §6 + audit §3: needsReview totals cover only flagged items.
+  it('R6. totals under smartFilter=needsReview cover only flagged items', () => {
+    // Clean complete receipt — should NOT appear under needsReview.
+    const cleanId = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 10_000,
+      vendorId: fx.vendorId,
+      categoryId: fx.categoryId,
+      taxCategoryId: fx.taxCategoryId,
+      txnDate: '2026-05-01',
+    })
+    fx.raw
+      .prepare(
+        `INSERT INTO page(item_id, seq, file_relpath, content_hash, ocr_status, ocr_conf, created_at)
+         VALUES (?, 1, 'images/clean.jpg', 'sha-c', 'done', 0.95, ?)`,
+      )
+      .run(cleanId, NOW)
+
+    // OCR-failed receipt with money — needs review.
+    const failedId = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 5_000,
+      vendorId: fx.vendorId,
+      categoryId: fx.categoryId,
+      taxCategoryId: fx.taxCategoryId,
+      txnDate: '2026-05-02',
+    })
+    fx.raw
+      .prepare(
+        `INSERT INTO page(item_id, seq, file_relpath, content_hash, ocr_status, created_at)
+         VALUES (?, 1, 'images/fail.jpg', 'sha-f', 'failed', ?)`,
+      )
+      .run(failedId, NOW)
+
+    // Missing vendor — needs review (v_missing_key_data).
+    const missingId = mkReceipt(fx.raw, fx.folderUser, {
+      totalMinor: 3_000,
+      vendorId: null,
+      categoryId: fx.categoryId,
+      taxCategoryId: fx.taxCategoryId,
+      txnDate: '2026-05-03',
+    })
+
+    const all = fx.repos.items.list({ folderId: fx.folderUser })
+    const allUsd = all.totals.byCurrency.find((c) => c.currency === 'USD')
+    assert.equal(allUsd?.totalMinor, 18_000, 'unfiltered totals sum everything')
+
+    const nr = fx.repos.items.list({
+      folderId: fx.folderUser,
+      smartFilter: 'needsReview',
+    })
+    const nrIds = new Set(nr.rows.map((r) => r.itemId))
+    assert.ok(nrIds.has(failedId), 'OCR-failed is needsReview')
+    assert.ok(nrIds.has(missingId), 'missing vendor is needsReview')
+    assert.ok(!nrIds.has(cleanId), 'clean complete receipt is not needsReview')
+
+    const nrUsd = nr.totals.byCurrency.find((c) => c.currency === 'USD')
+    assert.ok(nrUsd, 'needsReview must return currency totals for the filtered set')
+    assert.equal(
+      nrUsd.totalMinor,
+      8_000,
+      `needsReview money must be 5000+3000=8000, not whole library; got ${nrUsd.totalMinor}`,
+    )
+    assert.equal(nrUsd.itemCount, 2)
+    // Status-bar needsReviewCount must agree with the filtered rows.
+    assert.equal(nr.totals.needsReviewCount, nr.rows.length)
+  })
+})
+

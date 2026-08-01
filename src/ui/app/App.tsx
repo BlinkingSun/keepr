@@ -10,11 +10,13 @@
  * sort, columns. A panel never reaches for another panel's state.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Folder, ResolvedPage, Rotation } from '../../shared/types.ts'
+import type { Folder, ResolvedPage, Rotation, ScanCaps, ScanDevice, ScanOptions } from '../../shared/types.ts'
 import type {
   FilterTotals, GridRow, ItemDetail, ItemPatch, ListRequest, PatchResult,
 } from '../../shared/ipc.ts'
 import { getPathForFile, hasBridge, invoke, on } from '../bridge.ts'
+import { ThumbPanel } from '../thumbs/index.ts'
+import { ScanPanel } from '../scan/index.ts'
 import { NavPanel } from '../nav/index.ts'
 import { GridPanel, DEFAULT_COLUMNS, formatMoney, pruneToVisible, type ColumnState, type SortSpec } from '../grid/index.ts'
 import { ViewerPanel } from '../viewer/index.ts'
@@ -50,6 +52,21 @@ export function App() {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState<{ total: number; done: number; failed: number } | null>(null)
+  const [importMenuOpen, setImportMenuOpen] = useState(false)
+  const [scanOpen, setScanOpen] = useState(false)
+  const [scanDevices, setScanDevices] = useState<ScanDevice[]>([])
+  const [scanDiscovering, setScanDiscovering] = useState(false)
+  const [scanSelected, setScanSelected] = useState<string | null>(null)
+  const [scanCaps, setScanCaps] = useState<ScanCaps | null>(null)
+  const [scanCapsLoading, setScanCapsLoading] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanPages, setScanPages] = useState<Array<{ n: number; state: 'scanning' | 'done' | 'failed' }>>([])
+  const [scanError, setScanError] = useState<string | null>(null)
+  const [watcherNote, setWatcherNote] = useState<string | null>(null)
+  /** Job ids started by scans — job:progress for these must not drive the Import
+   *  button's indicator. Zero-contract demux: we know the ids because scan:start
+   *  returned them. */
+  const scanJobIds = useRef<Set<string>>(new Set())
   const [dragging, setDragging] = useState(false)
 
   const offline = !hasBridge()
@@ -226,6 +243,9 @@ export function App() {
   useEffect(() => {
     if (offline) return
     return on('job:progress', (e) => {
+      // Scan jobs report through scan:* — without this guard the Import button
+      // flashes "Importing" during scans and watcher pickups.
+      if (scanJobIds.current.has(e.jobId)) return
       if (e.status === 'done' || e.status === 'failed' || e.status === 'cancelled' || e.status === 'partial') {
         setImporting(null)
         void refresh()
@@ -234,6 +254,97 @@ export function App() {
       }
     })
   }, [offline, refresh])
+
+  // Scan lifecycle events drive the modal's progress list.
+  useEffect(() => {
+    if (offline) return
+    const offP = on('scan:progress', (e) => {
+      setScanPages((prev) => {
+        const next = prev.filter((p) => p.n !== e.page)
+        next.push({ n: e.page, state: e.state })
+        return next.sort((a, b) => a.n - b.n)
+      })
+    })
+    const offD = on('scan:done', (e) => {
+      setScanning(false)
+      setScanPages((prev) => prev.map((p) => ({ ...p, state: 'done' as const })))
+      setScanError(null)
+      void refresh()
+    })
+    const offE = on('scan:error', (e) => {
+      setScanning(false)
+      setScanError(e.message)
+    })
+    return () => { offP(); offD(); offE() }
+  }, [offline, refresh])
+
+  // Watcher activity: refresh the grid and surface a transient note — files
+  // ingested by the New Receipts folder should feel like the app did something,
+  // not like rows appeared by magic.
+  useEffect(() => {
+    if (offline) return
+    return on('watcher:activity', (e) => {
+      if (e.ingested > 0 || e.duplicates > 0 || e.failed > 0) {
+        const bits: string[] = []
+        if (e.ingested) bits.push(`${e.ingested} imported`)
+        if (e.duplicates) bits.push(`${e.duplicates} duplicate${e.duplicates === 1 ? '' : 's'} archived`)
+        if (e.failed) bits.push(`${e.failed} failed`)
+        setWatcherNote(`New Receipts: ${bits.join(' · ')}`)
+        window.setTimeout(() => setWatcherNote(null), 6000)
+        void refresh()
+      }
+    })
+  }, [offline, refresh])
+
+  const openScan = useCallback(async () => {
+    setScanOpen(true)
+    setScanError(null)
+    setScanPages([])
+    setScanDiscovering(true)
+    try {
+      const res = await invoke('scan:discover', { timeoutMs: 3000 })
+      setScanDevices(res.devices)
+      if (res.devices.length === 1 && res.devices[0]) setScanSelected(res.devices[0].id)
+    } catch (e) {
+      setScanError((e as Error).message)
+    } finally {
+      setScanDiscovering(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!scanSelected) { setScanCaps(null); return }
+    setScanCapsLoading(true)
+    setScanCaps(null)
+    void invoke('scan:capabilities', { deviceId: scanSelected })
+      .then(setScanCaps)
+      .catch((e) => setScanError((e as Error).message))
+      .finally(() => setScanCapsLoading(false))
+  }, [scanSelected])
+
+  const startScan = useCallback(async (options: ScanOptions) => {
+    if (!scanSelected) return
+    setScanError(null)
+    setScanPages([])
+    setScanning(true)
+    try {
+      const { jobId } = await invoke('scan:start', { deviceId: scanSelected, options })
+      scanJobIds.current.add(jobId)
+    } catch (e) {
+      setScanning(false)
+      setScanError((e as Error).message)
+    }
+  }, [scanSelected])
+
+  const markReviewed = useCallback(async (ids: number[]) => {
+    if (!ids.length) return
+    await invoke('item:bulk', { op: 'reviewed', ids })
+    setSelectedIds(new Set())
+    await refresh()
+    if (openItemId != null && ids.includes(openItemId)) {
+      setDetail(await invoke('item:detail', { id: openItemId }))
+    }
+  }, [refresh, openItemId])
 
   const inbox = useMemo(() => folders.find((f) => f.kind === 'inbox') ?? null, [folders])
 
@@ -287,13 +398,56 @@ export function App() {
         )}
         <button
           type="button"
-          className="btn-primary titlebar-import"
-          onClick={() => void pickAndImport()}
-          disabled={offline || importing != null}
-          title="Import receipt images, PDFs or vCards (or drag files onto the window)"
+          className="btn-primary titlebar-scan"
+          onClick={() => void openScan()}
+          disabled={offline}
+          title="Scan from a network (AirScan/eSCL) scanner into the Inbox"
         >
-          {importing ? `Importing ${importing.done}/${importing.total}` : 'Import'}
+          Scan
         </button>
+        <div className="import-menu-wrap">
+          <button
+            type="button"
+            className="btn-primary titlebar-import"
+            onClick={() => setImportMenuOpen((v) => !v)}
+            disabled={offline || importing != null}
+            aria-haspopup="menu"
+            aria-expanded={importMenuOpen}
+            title="Import receipt images, PDFs or vCards (or drag files onto the window)"
+          >
+            {importing ? `Importing ${importing.done}/${importing.total}` : 'Import ▾'}
+          </button>
+          {importMenuOpen && (
+            <>
+              {/* Click-away scrim: cheaper and more predictable than global
+                  listeners, and it cannot leak. */}
+              <div className="menu-scrim" onClick={() => setImportMenuOpen(false)} />
+              <div className="app-menu" role="menu">
+                <button type="button" role="menuitem" className="app-menu-item"
+                  onClick={() => { setImportMenuOpen(false); void pickAndImport() }}>
+                  Files…
+                </button>
+                <button type="button" role="menuitem" className="app-menu-item"
+                  onClick={async () => {
+                    setImportMenuOpen(false)
+                    const res = await invoke('dialog:pickImportFolder', undefined)
+                    if (!res.canceled && res.paths.length) await runImport(res.paths)
+                  }}>
+                  Folder…
+                </button>
+                <div className="app-menu-divider" />
+                <button type="button" role="menuitem" className="app-menu-item"
+                  onClick={() => { setImportMenuOpen(false); void invoke('shell:openPath', { target: 'newReceipts' }) }}>
+                  Open New Receipts Folder
+                </button>
+                <button type="button" role="menuitem" className="app-menu-item"
+                  onClick={() => { setImportMenuOpen(false); void invoke('shell:openPath', { target: 'oldReceipts' }) }}>
+                  Open Old Receipts Folder
+                </button>
+              </div>
+            </>
+          )}
+        </div>
         <div className="seg" role="tablist" aria-label="View">
           {(['grid', 'thumbnail', 'details'] as ViewMode[]).map((v) => (
             <button key={v} role="tab" aria-selected={view === v}
@@ -339,7 +493,18 @@ export function App() {
               Renderer preview: no preload bridge, so no library is attached.
             </div>
           )}
-          {showDetails ? (
+          {view === 'details' && detail == null ? (
+            /* The Details button previously did NOTHING without a selection —
+               one of the user's 'buttons that don't work'. An instructive empty
+               state beats a silent no-op. */
+            <div className="details-empty">
+              <p>No item open.</p>
+              <p className="muted">
+                Double-click a receipt in the Grid or Thumbnail view, or select
+                one and press Enter.
+              </p>
+            </div>
+          ) : showDetails ? (
             <ViewerPanel
               variant="details"
               detail={detail}
@@ -364,6 +529,20 @@ export function App() {
                 invoke('page:assignRegion', { pageId, field, x: box.x, y: box.y, w: box.w, h: box.h })
               }
             />
+          ) : view === 'thumbnail' ? (
+            /* The other dead button: this view did not exist at all. */
+            <ThumbPanel
+              rows={rows}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
+              onOpenItem={(id) => { setOpenItemId(id); setView('details') }}
+              thumbSrc={(row) =>
+                row.thumbRelPath
+                  ? pageSrc({ fileRelPath: row.thumbRelPath } as ResolvedPage)
+                  : null
+              }
+              loading={loading}
+            />
           ) : (
             <GridPanel
               rows={rows}
@@ -384,7 +563,22 @@ export function App() {
 
         {!showDetails && (
           <aside className="inspector" aria-label="Item details">
-            <div className="pane-head">Receipt Details</div>
+            <div className="pane-head">
+              Receipt Details
+              {openItemId != null && detail && detail.item.reviewedAt == null && (
+                <button
+                  type="button"
+                  className="btn-primary btn-small pane-head-action"
+                  onClick={() => void markReviewed([openItemId])}
+                  title="Mark this item reviewed (Cmd/Ctrl+Enter in the grid)"
+                >
+                  Mark Reviewed
+                </button>
+              )}
+              {openItemId != null && detail && detail.item.reviewedAt != null && (
+                <span className="pane-head-reviewed">Reviewed</span>
+              )}
+            </div>
             {openItemId == null ? (
               <div className="inspector-empty muted">Select an item</div>
             ) : (
@@ -416,6 +610,41 @@ export function App() {
           </aside>
         )}
       </div>
+
+      {scanOpen && (
+        <div className="modal-scrim" onClick={() => !scanning && setScanOpen(false)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+            <ScanPanel
+              devices={scanDevices}
+              discovering={scanDiscovering}
+              selectedId={scanSelected}
+              caps={scanCaps}
+              capsLoading={scanCapsLoading}
+              scanning={scanning}
+              pages={scanPages}
+              error={scanError}
+              onRefresh={() => void openScan()}
+              onSelect={setScanSelected}
+              onProbe={(host, port) => {
+                void invoke('scan:probe', { host, ...(port === undefined ? {} : { port }) }).then((r) => {
+                  if (r.device) {
+                    setScanDevices((prev) =>
+                      prev.some((d) => d.id === r.device!.id) ? prev : [...prev, r.device!],
+                    )
+                    setScanSelected(r.device.id)
+                  } else if (r.error) setScanError(r.error)
+                })
+              }}
+              onScan={(options) => void startScan(options)}
+              onCancel={() => {
+                const id = [...scanJobIds.current].pop()
+                if (id) void invoke('scan:cancel', { jobId: id })
+              }}
+              onClose={() => setScanOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {dragging && (
         <div className="drop-overlay" aria-hidden>
@@ -462,6 +691,17 @@ export function App() {
               </span>
             </>
           )}
+          {selectedIds.size > 0 && (
+            <button
+              type="button"
+              className="stat stat-flag"
+              onClick={() => void markReviewed([...selectedIds])}
+              title="Mark every selected item reviewed"
+            >
+              Mark {selectedIds.size} reviewed
+            </button>
+          )}
+          {watcherNote && <span className="stat stat-watcher">{watcherNote}</span>}
           {/* Flag summary. Clickable, because seeing "3 need review" and then
               having to find the filter yourself is a dead end. */}
           {totals && totals.needsReviewCount > 0 && (

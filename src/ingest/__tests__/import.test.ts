@@ -1,11 +1,15 @@
 /**
- * Lane C import tests — acceptance 1–5, 11.
+ * Lane C / W import tests — acceptance 1–5, 11 + directory/dedupe/pagesAsItem.
  */
 import assert from 'node:assert/strict'
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test, after } from 'node:test'
-import { importFiles, waitForImportOcr } from '../import.ts'
+import {
+  importFiles,
+  importPagesAsItem,
+  waitForImportOcr,
+} from '../import.ts'
 import {
   openIngestFixture,
   writeTestJpeg,
@@ -186,6 +190,126 @@ test('11. vCard import creates a contact item with parsed name and email', async
       .prepare(`SELECT COUNT(*) AS n FROM page WHERE item_id = ?`)
       .get(result.itemIds[0]!) as { n: number }
     assert.equal(pages.n, 0)
+  })
+})
+
+test('W2. import of a directory path creates items for every supported file', async () => {
+  await withFx(async (fx) => {
+    const dir = join(fx.fixturesDir, 'batch')
+    await mkdir(join(dir, 'nested'), { recursive: true })
+    await writeTestJpeg(dir, 'one.jpg')
+    await writeTestJpeg(join(dir, 'nested'), 'two.jpg')
+    await writeFile(join(dir, 'readme.txt'), 'notes')
+
+    const result = await importFiles(fx.deps, { paths: [dir] })
+    assert.equal(result.itemIds.length, 2)
+    assert.equal(result.skippedUnsupported, 1)
+    assert.equal(result.rejected.length, 0)
+  })
+})
+
+test('W3. skipDuplicates: same file twice → 1 item, duplicates[] names existing', async () => {
+  await withFx(async (fx) => {
+    const bytes = await (async () => {
+      const p = await writeTestJpeg(fx.fixturesDir, 'dup.jpg', { r: 9, g: 8, b: 7 })
+      const { readFile } = await import('node:fs/promises')
+      return readFile(p)
+    })()
+    const p1 = join(fx.fixturesDir, 'd1.jpg')
+    const p2 = join(fx.fixturesDir, 'd2.jpg')
+    await writeFile(p1, bytes)
+    await writeFile(p2, bytes)
+
+    const first = await importFiles(fx.deps, { paths: [p1], skipDuplicates: true })
+    assert.equal(first.itemIds.length, 1)
+    assert.equal(first.duplicates?.length ?? 0, 0)
+
+    const second = await importFiles(fx.deps, { paths: [p2], skipDuplicates: true })
+    assert.equal(second.itemIds.length, 0)
+    assert.equal(second.duplicates?.length, 1)
+    assert.equal(second.duplicates![0]!.existingItemId, first.itemIds[0])
+    assert.equal(second.duplicates![0]!.path, p2)
+
+    const n = fx.raw.prepare(`SELECT COUNT(*) AS n FROM item`).get() as { n: number }
+    assert.equal(n.n, 1)
+
+    // Source row recorded.
+    const src = fx.raw
+      .prepare(`SELECT source_sha256 FROM item_source_file WHERE item_id = ?`)
+      .get(first.itemIds[0]!) as { source_sha256: string }
+    assert.equal(src.source_sha256.length, 64)
+  })
+})
+
+test('W3b. skipDuplicates works for PDF via source hash (not page raster hash)', async () => {
+  await withFx(async (fx) => {
+    const pdf = await writeTestPdf(fx.fixturesDir, 'doc.pdf', 2)
+    const { readFile } = await import('node:fs/promises')
+    const bytes = await readFile(pdf)
+    const pdf2 = join(fx.fixturesDir, 'doc-copy.pdf')
+    await writeFile(pdf2, bytes)
+
+    const first = await importFiles(fx.deps, { paths: [pdf], skipDuplicates: true })
+    assert.equal(first.itemIds.length, 1)
+    const second = await importFiles(fx.deps, { paths: [pdf2], skipDuplicates: true })
+    assert.equal(second.itemIds.length, 0)
+    assert.equal(second.duplicates?.[0]?.existingItemId, first.itemIds[0])
+  })
+})
+
+test('W7. importPagesAsItem: 3 files → 1 item, 3 pages, seq order; OCR queued', async () => {
+  await withFx(async (fx) => {
+    const a = await writeTestJpeg(fx.fixturesDir, 'p1.jpg', { r: 1, g: 0, b: 0 })
+    const b = await writeTestJpeg(fx.fixturesDir, 'p2.jpg', { r: 0, g: 1, b: 0 })
+    const c = await writeTestJpeg(fx.fixturesDir, 'p3.jpg', { r: 0, g: 0, b: 1 })
+
+    const result = await importPagesAsItem(fx.deps, {
+      paths: [a, b, c],
+      toInbox: true,
+      awaitOcr: true,
+    })
+    assert.equal(result.pageCount, 3)
+    assert.ok(result.itemId > 0)
+    assert.ok(result.jobId)
+
+    const pages = fx.raw
+      .prepare(`SELECT seq FROM page WHERE item_id = ? ORDER BY seq`)
+      .all(result.itemId) as Array<{ seq: number }>
+    assert.deepEqual(
+      pages.map((p) => p.seq),
+      [1, 2, 3],
+    )
+
+    // OCR ran for each page (stub records calls).
+    assert.ok(fx.ocr.calls.length >= 3)
+
+    // Combined source hash recorded.
+    const src = fx.raw
+      .prepare(`SELECT source_sha256 FROM item_source_file WHERE item_id = ?`)
+      .get(result.itemId) as { source_sha256: string }
+    assert.equal(src.source_sha256.length, 64)
+  })
+})
+
+test('W7b. importPagesAsItem skipDuplicates on same page set', async () => {
+  await withFx(async (fx) => {
+    const a = await writeTestJpeg(fx.fixturesDir, 's1.jpg', { r: 1, g: 1, b: 1 })
+    const b = await writeTestJpeg(fx.fixturesDir, 's2.jpg', { r: 2, g: 2, b: 2 })
+    const first = await importPagesAsItem(fx.deps, { paths: [a, b], skipDuplicates: true })
+    const second = await importPagesAsItem(fx.deps, { paths: [a, b], skipDuplicates: true })
+    assert.equal(second.duplicateOf, first.itemId)
+    const n = fx.raw.prepare(`SELECT COUNT(*) AS n FROM item`).get() as { n: number }
+    assert.equal(n.n, 1)
+  })
+})
+
+test('W empty directory → 0 items, not an error', async () => {
+  await withFx(async (fx) => {
+    const dir = join(fx.fixturesDir, 'empty')
+    await mkdir(dir, { recursive: true })
+    const result = await importFiles(fx.deps, { paths: [dir] })
+    assert.equal(result.itemIds.length, 0)
+    assert.equal(result.rejected.length, 0)
   })
 })
 

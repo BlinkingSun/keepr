@@ -12,6 +12,8 @@ import path from 'node:path'
 import { createContext, type AppContext } from './context.ts'
 import { startHttpApi } from './httpApi.ts'
 import { registerIpc, wireEvents } from './ipc.ts'
+import { mainEvents } from './events.ts'
+import { scanService } from './scanService.ts'
 
 const argv = process.argv.slice(1)
 const flag = (n: string) => argv.includes(n)
@@ -39,6 +41,12 @@ async function createWindow(c: AppContext): Promise<BrowserWindow> {
 
   registerIpc(ipcMain, c)
   wireEvents(win, c)
+  // Everything services publish (scan progress, watcher activity, item changes)
+  // flows to this window; unsubscribed automatically when it closes.
+  const offBus = mainEvents.subscribe((channel, payload) => {
+    if (!win.isDestroyed()) win.webContents.send(channel, payload)
+  })
+  win.on('closed', offBus)
 
   const devUrl = process.env.KEEPR_DEV_SERVER
   if (devUrl) await win.loadURL(devUrl)
@@ -58,6 +66,17 @@ async function main(): Promise<void> {
   await app.whenReady()
   ctx = createContext({ libraryRoot: libraryRoot() })
   console.log(`[keepr] library ${ctx.libraryRoot} (schema v${ctx.schemaVersion})`)
+
+  // Crash hygiene for scan staging, then the folder workflow in BOTH modes —
+  // headless serve auto-ingests New Receipts too, which is also how the watcher
+  // is exercised end-to-end from the HTTP API.
+  scanService.sweepTmp(ctx)
+  ctx.startWatcher((e) => {
+    mainEvents.emit('watcher:activity', e)
+    if (e.ingested > 0 || e.duplicates > 0) {
+      mainEvents.emit('item:changed', { itemIds: [], reason: 'import' })
+    }
+  })
 
   const portRaw = val('--port')
   if (headless || portRaw) {

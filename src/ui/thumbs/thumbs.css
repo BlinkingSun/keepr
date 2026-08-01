@@ -1,0 +1,272 @@
+/**
+ * Thumbnail panel styles — Lane T.
+ * Tokens only. Dark only. No emojis. No hard-coded hex colours.
+ */
+
+.keepr-thumbs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font: var(--fs-base) / var(--lh-tight) var(--font-ui);
+  position: relative;
+  outline: none;
+}
+
+.keepr-thumbs-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-5);
+  position: relative;
+}
+
+.keepr-thumbs-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.keepr-thumbs-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.keepr-thumbs-row {
+  display: grid;
+  gap: 0 var(--sp-4); /* horizontal gap; vertical stride is rowHeight */
+  align-content: start;
+  box-sizing: border-box;
+}
+
+/* ---- card ------------------------------------------------------------- */
+
+.keepr-thumb-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  cursor: default;
+  min-width: 0;
+  outline: none;
+}
+
+.keepr-thumb-card[data-selected='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.keepr-thumb-card[data-focused='true']:not([data-selected='true']) {
+  box-shadow: var(--focus-ring);
+}
+
+/* Unreviewed: accent left edge — same signal as grid rows. */
+.keepr-thumb-card[data-unreviewed='true']:not([data-selected='true']) {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.keepr-thumb-card[data-unreviewed='true'][data-focused='true']:not([data-selected='true']) {
+  box-shadow: inset 3px 0 0 var(--accent), var(--focus-ring);
+}
+
+.keepr-thumb-card[data-selected='true'][data-focused='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ---- thumb box (4:5) -------------------------------------------------- */
+
+.keepr-thumb-media {
+  aspect-ratio: 4 / 5;
+  width: 100%;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.keepr-thumb-media img {
+  width: 100%;
+  height: 100%;
+  /* contain, not cover: DESIGN.md batch-2 says LETTERBOXED. Receipts are
+     documents — cover-cropping cut vendor headers off the cards in the first
+     integrated build, which defeats the point of a visual index. */
+  object-fit: contain;
+  display: block;
+}
+
+.keepr-thumb-placeholder {
+  width: 56%;
+  height: 70%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  color: var(--text-muted);
+}
+
+.keepr-thumb-placeholder-label {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+}
+
+/* ---- flag / split badges ---------------------------------------------- */
+
+.keepr-thumb-flag {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  z-index: 2;
+  box-shadow: var(--shadow-panel);
+  cursor: help;
+}
+
+.keepr-thumb-flag-danger {
+  background: var(--danger);
+  color: var(--bg-base);
+}
+
+.keepr-thumb-flag-warn {
+  background: var(--warn);
+  color: var(--bg-base);
+}
+
+.keepr-thumb-flag-pending {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  font-size: 14px;
+}
+
+.keepr-thumb-split {
+  position: absolute;
+  top: var(--sp-2);
+  left: var(--sp-2);
+  z-index: 2;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.keepr-thumb-card[data-selected='true'] .keepr-thumb-split {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* ---- caption ---------------------------------------------------------- */
+
+.keepr-thumb-cap {
+  padding: var(--sp-3) var(--sp-3) 9px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--sp-3);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.keepr-thumb-vendor {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.keepr-thumb-vendor[data-empty='true'] {
+  color: var(--text-muted);
+}
+
+.keepr-thumb-total {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-family: var(--font-mono-num);
+  color: var(--text-primary);
+}
+
+.keepr-thumb-date {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ---- empty / loading -------------------------------------------------- */
+
+.keepr-thumbs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7);
+  color: var(--text-secondary);
+  max-width: 28rem;
+}
+
+.keepr-thumbs-empty h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.keepr-thumbs-empty p {
+  margin: 0;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--text-secondary);
+}
+
+.keepr-thumbs-empty .keepr-thumbs-hint {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.keepr-thumbs-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-base) 70%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  z-index: 10;
+  pointer-events: none;
+}

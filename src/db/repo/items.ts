@@ -13,6 +13,7 @@ import {
   asCivilDate,
   asCurrency,
   asMinor,
+  asRelPath,
 } from '../../shared/types.ts'
 import type {
   FilterTotals,
@@ -74,6 +75,8 @@ interface GridSqlRow {
   missing_total: number | null
   missing_category: number | null
   missing_tax_category: number | null
+  /** First page thumb (or file) via v_item_pages — null when the item has no pages. */
+  thumb_relpath: string | null
 }
 
 function lowConfidenceFields(extractionJson: string | null): string[] {
@@ -196,10 +199,9 @@ function mapGridRow(r: GridSqlRow): GridRow {
     ...ocrSignals(r),
     lowConfidenceFields: lowConfidenceFields(r.extraction_json),
     missingFields: missingFieldsFromRow(r),
-    // PLACEHOLDER — Lane R replaces this with the first page's thumbnail via an
-    // inline subselect (split children resolving their origin's image). Kept null
-    // here only so the contract change compiles for every parallel lane.
-    thumbRelPath: null,
+    // First page by seq through v_item_pages so a split child shows its origin's
+    // image (children own no page rows). Null only when the item truly has none.
+    thumbRelPath: r.thumb_relpath ? asRelPath(r.thumb_relpath) : null,
   }
 }
 
@@ -255,7 +257,14 @@ export class ItemsRepo {
         mk.missing_date,
         mk.missing_total,
         mk.missing_category,
-        mk.missing_tax_category
+        mk.missing_tax_category,
+        -- First page by seq via v_item_pages (split children resolve origin image).
+        -- Correlated subselect: zero extra statements; query budget stays ≤6.
+        (SELECT COALESCE(vp.thumb_relpath, vp.file_relpath)
+           FROM v_item_pages vp
+          WHERE vp.item_id = i.id
+          ORDER BY vp.seq
+          LIMIT 1) AS thumb_relpath
       FROM item i
       LEFT JOIN receipt_data r ON r.item_id = i.id
       LEFT JOIN vendor v ON v.id = r.vendor_id
@@ -471,12 +480,17 @@ export class ItemsRepo {
 
   /** Same filters as buildWhere, for queries driven by v_summable_receipts + item. */
   private buildSummableWhere(req: ListRequest): { whereSql: string; params: unknown[] } {
-    // v_summable_receipts already excludes trashed + superseded. Mirror other filters.
+    // v_summable_receipts already excludes trashed + superseded. Mirror other filters
+    // so money totals describe the same set the grid shows (status-bar consistency).
     const clauses: string[] = ['1=1']
     const params: unknown[] = []
 
     if (req.smartFilter === 'unreviewed') {
       clauses.push(`sr.reviewed_at IS NULL`)
+    }
+    if (req.smartFilter === 'needsReview') {
+      // Same predicate as buildWhere / flag counts — never sum the whole library.
+      clauses.push(ItemsRepo.NEEDS_REVIEW_SQL)
     }
     if (req.smartFilter === 'inbox') {
       clauses.push(`sr.folder_id IN (SELECT id FROM folder WHERE kind = 'inbox')`)
@@ -510,33 +524,51 @@ export class ItemsRepo {
     return { whereSql: clauses.join(' AND '), params }
   }
 
+  /**
+   * Whitelisted ORDER BY. Unknown keys are ignored (injection guard). Empty result
+   * after filtering falls back to the default (txn_date DESC, id ASC) — never an
+   * empty ORDER BY fragment. NULLs sort last in both directions via CASE, not
+   * SQLite's default NULLS FIRST on ASC (which made category sort look dead).
+   */
   private buildOrder(req: ListRequest): string {
-    const allowed = new Map<string, string>([
-      ['txnDate', 'r.txn_date'],
-      ['vendorName', 'v.name'],
-      ['categoryName', 'c.name'],
-      ['totalMinor', 'r.total_minor'],
-      ['currency', 'r.currency'],
-      ['createdAt', 'i.created_at'],
-      ['modifiedAt', 'i.modified_at'],
-      ['type', 'i.type'],
-      ['folderId', 'i.folder_id'],
+    // sort expr may include COLLATE; nullCheck is the raw column for IS NULL.
+    const allowed = new Map<string, { sort: string; nullCheck: string }>([
+      ['txnDate', { sort: 'r.txn_date', nullCheck: 'r.txn_date' }],
+      ['vendorName', { sort: 'v.name COLLATE NOCASE', nullCheck: 'v.name' }],
+      ['categoryName', { sort: 'c.name COLLATE NOCASE', nullCheck: 'c.name' }],
+      ['paymentTypeName', { sort: 'pt.name COLLATE NOCASE', nullCheck: 'pt.name' }],
+      ['taxTotalMinor', { sort: 'r.tax_total_minor', nullCheck: 'r.tax_total_minor' }],
+      ['totalMinor', { sort: 'r.total_minor', nullCheck: 'r.total_minor' }],
+      ['reviewed', { sort: 'i.reviewed_at', nullCheck: 'i.reviewed_at' }],
+      ['type', { sort: 'i.type', nullCheck: 'i.type' }],
+      // Secondary keys still used by callers; same nulls-last treatment.
+      ['currency', { sort: 'r.currency', nullCheck: 'r.currency' }],
+      ['createdAt', { sort: 'i.created_at', nullCheck: 'i.created_at' }],
+      ['modifiedAt', { sort: 'i.modified_at', nullCheck: 'i.modified_at' }],
+      ['folderId', { sort: 'i.folder_id', nullCheck: 'i.folder_id' }],
     ])
+
     const sorts = req.sort?.length
       ? req.sort
-      : [{ column: 'txnDate', dir: 'desc' as const }, { column: 'createdAt', dir: 'desc' as const }]
+      : [{ column: 'txnDate', dir: 'desc' as const }]
 
     const parts: string[] = []
     for (const s of sorts) {
       const col = allowed.get(s.column)
-      if (!col) continue
+      if (!col) continue // never interpolate unknown keys
       const dir = s.dir === 'asc' ? 'ASC' : 'DESC'
-      parts.push(`${col} ${dir} NULLS LAST`)
+      // NULLs last both directions: null marker first, then value ASC/DESC.
+      parts.push(`CASE WHEN ${col.nullCheck} IS NULL THEN 1 ELSE 0 END`)
+      parts.push(`${col.sort} ${dir}`)
     }
-    if (!parts.length) parts.push(`i.id DESC`)
-    // SQLite before 3.30 may not like NULLS LAST — use CASE fallback if needed.
-    // better-sqlite3 typically ships recent SQLite; keep NULLS LAST.
-    return `ORDER BY ${parts.join(', ')}, i.id DESC`
+
+    // Hostile / empty whitelist → default order, never bare ORDER BY with no keys.
+    if (!parts.length) {
+      return `ORDER BY CASE WHEN r.txn_date IS NULL THEN 1 ELSE 0 END, r.txn_date DESC, i.id ASC`
+    }
+
+    // Stable id tiebreak always (ASC).
+    return `ORDER BY ${parts.join(', ')}, i.id ASC`
   }
 
   detail(id: number): ItemDetail | null {
@@ -1153,7 +1185,12 @@ export class ItemsRepo {
         (SELECT COUNT(*) FROM page p WHERE p.item_id = i.id AND p.ocr_status = 'done') AS ocr_done,
         (SELECT MIN(p.ocr_conf) FROM page p WHERE p.item_id = i.id) AS ocr_min_conf,
            r.extraction_json,
-           mk.missing_vendor, mk.missing_date, mk.missing_total, mk.missing_category, mk.missing_tax_category
+           mk.missing_vendor, mk.missing_date, mk.missing_total, mk.missing_category, mk.missing_tax_category,
+           (SELECT COALESCE(vp.thumb_relpath, vp.file_relpath)
+              FROM v_item_pages vp
+             WHERE vp.item_id = i.id
+             ORDER BY vp.seq
+             LIMIT 1) AS thumb_relpath
          FROM item i
          LEFT JOIN receipt_data r ON r.item_id = i.id
          LEFT JOIN vendor v ON v.id = r.vendor_id

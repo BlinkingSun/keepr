@@ -8,6 +8,8 @@ import './app/app.css'
 import '../ui/nav/nav.css'
 import '../ui/grid/grid.css'
 import '../ui/viewer/viewer.css'
+import '../ui/thumbs/thumbs.css'
+import '../ui/scan/scan.css'
 
 const el = document.getElementById('root')
 if (!el) throw new Error('#root missing from index.html')

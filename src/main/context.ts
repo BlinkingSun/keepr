@@ -19,6 +19,7 @@ import { DiskFileStore } from '../store/fileStore.ts'
 import type { LibraryRelPath } from '../shared/types.ts'
 import { checkIntegrity, ensureSystemFolders, openLibrary } from './db.ts'
 import { SqliteJobQueue } from './jobQueue.ts'
+import { createNewReceiptsWatcher } from '../ingest/watchFolders.ts'
 
 export interface AppContext {
   db: Database.Database
@@ -34,11 +35,13 @@ export interface AppContext {
   newReceiptsDir: string
   /** Human-browsable archive of ingested originals; scans are born here. */
   oldReceiptsDir: string
-  /** Live watched-folder state; replaced by the real watcher at integrate. */
+  /** Live watched-folder state from the running watcher. */
   watcherStatus(): {
     watching: boolean; newDir: string; oldDir: string
     pendingCount: number; failed: Array<{ name: string; reason: string }>
   }
+  /** Start auto-ingesting New Receipts. Idempotent; called once main is ready. */
+  startWatcher(onActivity?: (e: { ingested: number; duplicates: number; failed: number }) => void): void
   /**
    * Ingest dependencies, created on FIRST USE rather than at startup.
    *
@@ -148,6 +151,7 @@ export function createContext(opts: CreateContextOptions): AppContext {
   // second OCR scheduler and a second image pool, which is exactly the nested
   // worker-pool problem the plan forbids.
   let ingestDeps: IngestDeps | null = null
+  let watcher: ReturnType<typeof createNewReceiptsWatcher> | null = null
   const ingest = (): IngestDeps => {
     if (!ingestDeps) {
       ingestDeps = {
@@ -181,13 +185,30 @@ export function createContext(opts: CreateContextOptions): AppContext {
     trashId,
     newReceiptsDir,
     oldReceiptsDir,
-    watcherStatus: () => ({
-      watching: false, newDir: newReceiptsDir, oldDir: oldReceiptsDir,
-      pendingCount: 0, failed: [],
-    }),
+    watcherStatus: () =>
+      watcher
+        ? { ...watcher.status(), newDir: newReceiptsDir, oldDir: oldReceiptsDir }
+        : {
+            watching: false, newDir: newReceiptsDir, oldDir: oldReceiptsDir,
+            pendingCount: 0, failed: [],
+          },
+    startWatcher(onActivity) {
+      if (watcher) return
+      // Watcher deps come from ingest(): construction is cheap (the OCR
+      // scheduler only spins up when a file is actually processed), so a quiet
+      // watcher costs nothing at boot.
+      watcher = createNewReceiptsWatcher(ingest(), {
+        newDir: newReceiptsDir,
+        oldDir: oldReceiptsDir,
+      })
+      if (onActivity) watcher.onActivity(onActivity)
+      watcher.start()
+    },
     ingest,
     maintenance,
     close() {
+      watcher?.stop()
+      watcher = null
       // Dispose OCR workers first: they are separate threads and would otherwise
       // keep the process alive after the window closes.
       if (ingestDeps) {

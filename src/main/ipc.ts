@@ -8,7 +8,8 @@
  */
 import type { BrowserWindow, IpcMain } from 'electron'
 import { IPC_CHANNELS, type IpcChannel } from '../shared/ipc.ts'
-import { importFiles, runOcrJob } from '../ingest/index.ts'
+import { importFiles, importPagesAsItem, runOcrJob } from '../ingest/index.ts'
+import { scanService } from './scanService.ts'
 import { search, missingKeyData } from '../search/index.ts'
 import { splitReceipt, combineItems, separateItem } from '../splitting/index.ts'
 import { exportCsv, exportXlsx, exportPdf } from '../export/index.ts'
@@ -198,12 +199,17 @@ export function buildHandlers(ctx: AppContext): Record<string, AnyHandler> {
       return { ok: err === '' }
     },
     'watcher:status': (c) => c.watcherStatus(),
-    'scan:discover': notYet('S', 'Scanner discovery'),
-    'scan:probe': notYet('S', 'Scanner probe'),
-    'scan:capabilities': notYet('S', 'Scanner capabilities'),
-    'scan:start': notYet('S', 'Scanning'),
-    'scan:cancel': notYet('S', 'Scan cancel'),
-    'ingest:importPagesAsItem': notYet('W', 'Multi-page item import'),
+    'scan:discover': (c, r) => scanService.discover(c, r?.timeoutMs),
+    'scan:probe': (c, r) => scanService.probe(c, r.host, r.port, r.root),
+    'scan:capabilities': (c, r) => scanService.capabilities(c, r.deviceId),
+    'scan:start': (c, r) => scanService.start(c, r.deviceId, r.options),
+    'scan:cancel': (c, r) => scanService.cancel(c, r.jobId),
+    'ingest:importPagesAsItem': (c, r) =>
+      importPagesAsItem(c.ingest(), {
+        paths: r.paths,
+        ...(r.targetFolderId === undefined ? {} : { targetFolderId: r.targetFolderId }),
+        ...(r.toInbox === undefined ? {} : { toInbox: r.toInbox }),
+      }),
 
     'shell:revealFile': (c, r) => {
       // Electron is imported lazily so the headless path never needs it.

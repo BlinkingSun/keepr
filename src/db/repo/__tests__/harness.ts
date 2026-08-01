@@ -157,6 +157,7 @@ export function mkReceipt(
     vendorId?: number | null
     categoryId?: number | null
     taxCategoryId?: number | null
+    paymentTypeId?: number | null
     txnDate?: string | null
     sg?: number | null
     role?: string | null
@@ -170,8 +171,8 @@ export function mkReceipt(
   })
   raw
     .prepare(
-      `INSERT INTO receipt_data(item_id, txn_date, vendor_id, total_minor, currency, tax_total_minor, category_id, tax_category_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO receipt_data(item_id, txn_date, vendor_id, total_minor, currency, tax_total_minor, category_id, tax_category_id, payment_type_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -182,6 +183,7 @@ export function mkReceipt(
       opts.taxMinor ?? null,
       opts.categoryId ?? null,
       opts.taxCategoryId ?? null,
+      opts.paymentTypeId ?? null,
     )
   return id
 }

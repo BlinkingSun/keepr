@@ -45,6 +45,10 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const ctx = createContext({ libraryRoot: args.library })
   console.log(`[keepr] schema version ${ctx.schemaVersion}, inbox #${ctx.inboxId}`)
 
+  // The folder workflow runs headless too: drop a file into New Receipts and
+  // the HTTP API shows the ingested item — which is exactly how it gets tested.
+  ctx.startWatcher()
+
   const server = await startHttpApi(ctx, args.port)
 
   const shutdown = (signal: string) => {

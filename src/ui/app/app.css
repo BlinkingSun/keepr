@@ -132,3 +132,49 @@
 }
 .drop-overlay-title { font-size: var(--fs-xl); font-weight: 600; color: var(--accent); }
 .drop-overlay-sub { margin-top: var(--sp-3); color: var(--text-secondary); font-size: var(--fs-sm); }
+
+/* Import dropdown. App-styled rather than a native menu so both platforms look
+   identical and the dark theme holds. */
+.import-menu-wrap { position: relative; }
+.menu-scrim { position: fixed; inset: 0; z-index: 60; }
+.app-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 61;
+  min-width: 220px; padding: var(--sp-2);
+  background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-popover);
+}
+.app-menu-item {
+  appearance: none; border: 0; background: transparent; color: var(--text-primary);
+  display: block; width: 100%; text-align: left; font: inherit;
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-sm); cursor: pointer;
+}
+.app-menu-item:hover { background: var(--accent); color: var(--on-accent); }
+.app-menu-divider { height: 1px; background: var(--border-subtle); margin: var(--sp-2) var(--sp-2); }
+.titlebar-scan { margin-left: auto; }
+.titlebar-import { margin-left: var(--sp-3); }
+
+/* Scan modal chrome; the panel's interior styling ships with the scan lane. */
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg-base) 72%, transparent);
+}
+.modal-panel {
+  width: min(880px, calc(100vw - 48px)); max-height: calc(100vh - 96px);
+  overflow: auto; background: var(--bg-panel);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+}
+
+/* Details with nothing open: instructive, not blank. */
+.details-empty { flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: var(--sp-2); }
+.details-empty p { margin: 0; }
+
+.btn-small { padding: 2px var(--sp-3); font-size: var(--fs-sm); }
+.pane-head-action { margin-left: auto; }
+.pane-head-reviewed { margin-left: auto; color: var(--ok); font-size: var(--fs-sm); font-weight: 600; }
+.pane-head { display: flex; align-items: center; gap: var(--sp-3); }
+
+/* Transient New Receipts note: informational, accent not warn. */
+.stat-watcher { color: var(--accent); }

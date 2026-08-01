@@ -35,7 +35,12 @@ export interface FileStoreOptions {
   countCitations: CitationCounter
 }
 
-const EXT_ALLOW = new Set(['jpg', 'jpeg', 'png', 'tif', 'tiff', 'bmp', 'webp', 'pdf'])
+// vcf joined in batch 2: original vCards are preserved as source files for
+// provenance and dedupe, exactly like original PDFs. Lane W initially had to
+// duplicate the store's atomic-write layout for vCards because this list
+// excluded them — a parallel implementation of the same contract that would
+// have drifted; allowing the extension here retires it.
+const EXT_ALLOW = new Set(['jpg', 'jpeg', 'png', 'tif', 'tiff', 'bmp', 'webp', 'pdf', 'vcf'])
 
 export class DiskFileStore implements FileStore {
   readonly libraryRoot: string

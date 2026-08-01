@@ -23,6 +23,8 @@ import type { IngestDeps, IngestJobQueue } from '../types.ts'
 const here = dirname(fileURLToPath(import.meta.url))
 const schemaPath = join(here, '../../db/schema/001_initial.sql')
 const schemaSql = readFileSync(schemaPath, 'utf8')
+const migration002Path = join(here, '../../db/schema/002_source_files.sql')
+const migration002Sql = readFileSync(migration002Path, 'utf8')
 
 export const NOW = 1_753_900_000_000
 
@@ -144,6 +146,7 @@ export async function openIngestFixture(
 ): Promise<IngestFixture> {
   const raw = new Database(':memory:')
   raw.exec(schemaSql)
+  raw.exec(migration002Sql)
   raw.pragma('foreign_keys = ON')
 
   raw

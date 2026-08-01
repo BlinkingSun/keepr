@@ -1,8 +1,25 @@
 /**
- * Lane C — Ingest: import, Inbox queue, OCR orchestration, extraction.
+ * Lane C / W — Ingest: import, Inbox queue, OCR orchestration, extraction,
+ * directory walk, New/Old receipts watcher.
  */
 
-export { importFiles, waitForImportOcr, type ImportFilesRequest } from './import.ts'
+export {
+  importFiles,
+  importPagesAsItem,
+  waitForImportOcr,
+  combinedSourceSha,
+  type ImportFilesRequest,
+  type ImportPagesAsItemRequest,
+  type ImportPagesAsItemResult,
+} from './import.ts'
+export { walkForImportable, isPathInside, type WalkForImportableResult } from './dirwalk.ts'
+export {
+  createNewReceiptsWatcher,
+  type TickResult,
+  type WatcherActivity,
+  type WatcherStatus,
+  type WatchFoldersOpts,
+} from './watchFolders.ts'
 export { runOcrJob, type OcrJobOutcome } from './ocrRunner.ts'
 export {
   extractItem,
