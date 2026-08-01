@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>KeepR — Scan dialog</title>
+  <link rel="stylesheet" href="shell.css" />
+</head>
+<body>
+  <div class="stage">
+    <div class="window" style="position:relative">
+      <header class="titlebar">
+        <span class="traffic"></span>
+        <span class="brand">KeepR — Receipt Manager</span>
+        <div class="titlebar-actions">
+          <button class="btn-primary" type="button">Scan</button>
+          <div class="import-wrap">
+            <button class="btn-primary" type="button">Import <span class="chev"></span></button>
+          </div>
+          <div class="seg" role="tablist">
+            <button class="seg-item seg-active" type="button">Grid</button>
+            <button class="seg-item" type="button">Thumbnail</button>
+            <button class="seg-item" type="button">Details</button>
+          </div>
+        </div>
+        <div class="win-controls">
+          <span>─</span><span>□</span><span>×</span>
+        </div>
+      </header>
+
+      <div class="body">
+        <nav class="nav">
+          <div class="nav-row" style="margin-top:8px">
+            <svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1"/><path d="M5 3V2h6v1"/></svg>
+            <span>Inbox</span>
+            <span class="badge">17</span>
+          </div>
+          <div class="nav-head">Cabinet</div>
+          <div class="nav-row indent"><span class="dot"></span><span>2026 Tax Year</span></div>
+          <div class="nav-row indent-2"><span class="dot"></span><span>Q3</span></div>
+          <div class="nav-row indent-2 selected"><span class="dot"></span><span>Materials</span></div>
+          <div class="nav-head">Review</div>
+          <div class="nav-row indent"><span class="dot"></span><span>Needs Review</span><span class="badge badge-warn">3</span></div>
+          <div class="nav-head">Smart Filters</div>
+          <div class="nav-row indent"><span class="dot"></span><span>View All</span></div>
+          <div class="nav-row indent"><span class="dot"></span><span>Recently Added</span></div>
+          <div class="nav-row indent"><span class="dot"></span><span>Unreviewed</span></div>
+          <div class="nav-spacer"></div>
+          <div class="nav-row trash">
+            <svg class="ic" viewBox="0 0 16 16"><path d="M3 4h10M6 4V3h4v1M5 4l.5 9h5L11 4"/></svg>
+            <span>Trash</span>
+          </div>
+        </nav>
+
+        <main class="content" style="opacity:0.45">
+          <div style="padding:12px;color:var(--text-muted);font-size:12px">
+            <!-- dimmed grid shell suggestion -->
+            <div style="height:32px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:4px;margin-bottom:1px"></div>
+            <div style="height:28px;border-bottom:1px solid var(--border-subtle);opacity:0.5"></div>
+            <div style="height:28px;border-bottom:1px solid var(--border-subtle);opacity:0.4"></div>
+            <div style="height:28px;border-bottom:1px solid var(--border-subtle);opacity:0.35"></div>
+            <div style="height:28px;border-bottom:1px solid var(--border-subtle);opacity:0.3"></div>
+            <div style="height:28px;border-bottom:1px solid var(--border-subtle);opacity:0.25"></div>
+            <div style="height:28px;border-bottom:1px solid var(--border-subtle);opacity:0.2"></div>
+          </div>
+        </main>
+
+        <aside class="inspector" style="opacity:0.4">
+          <div class="pane-head">Receipt Details</div>
+        </aside>
+      </div>
+
+      <footer class="statusbar" style="opacity:0.5">
+        <span>12 receipts · Materials filter</span>
+        <div class="status-right">
+          <span class="stat">Sum <strong>$1,273.12</strong></span>
+          <span class="stat">Tax <strong>$135.15</strong></span>
+          <span class="stat-queue">3 unreviewed</span>
+        </div>
+      </footer>
+
+      <!-- Scan modal -->
+      <div class="scrim">
+        <div class="modal" role="dialog" aria-label="Scan">
+          <div class="modal-head">
+            <span>Scan</span>
+            <span class="modal-close">×</span>
+          </div>
+          <div class="modal-body">
+            <div class="modal-col">
+              <div class="col-label">
+                <span>Devices</span>
+                <button class="refresh-btn" type="button">Refresh</button>
+              </div>
+              <div class="device selected">
+                <span class="device-name">Brother MFC-L3770CDW</span>
+                <span class="device-host">192.168.1.42</span>
+              </div>
+              <div class="device">
+                <span class="device-name">HP OfficeJet 9015e</span>
+                <span class="device-host">192.168.1.58</span>
+              </div>
+              <div class="device add">
+                <span class="plus">+</span>
+                <span>Add by IP</span>
+              </div>
+            </div>
+            <div class="modal-col">
+              <div class="col-label"><span>Options</span></div>
+              <div class="opt-row">
+                <label>Source</label>
+                <div class="select"><span>ADF</span><span class="caret"></span></div>
+              </div>
+              <div class="opt-row">
+                <label>Color</label>
+                <div class="select"><span>Color</span><span class="caret"></span></div>
+              </div>
+              <div class="opt-row">
+                <label>Resolution</label>
+                <div class="select"><span>300 dpi</span><span class="caret"></span></div>
+              </div>
+              <div class="check-row">
+                <span class="check"></span>
+                <span>Duplex</span>
+              </div>
+
+              <div class="progress-list">
+                <div class="prog-item done">
+                  <span class="prog-dot"></span>
+                  <span>Page 1 — done</span>
+                </div>
+                <div class="prog-item scanning">
+                  <span class="prog-dot"></span>
+                  <span>Page 2 — scanning…</span>
+                </div>
+              </div>
+              <p class="note-line">Pages are saved to Old Receipts and imported to the Inbox</p>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <p class="footnote">Network (AirScan/eSCL) scanners. USB-only scanners not yet supported.</p>
+            <button class="btn-primary" type="button">Scan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

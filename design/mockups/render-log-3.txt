@@ -1,0 +1,5 @@
+UI mockups need exact text and layout, so I'll build them in HTML/CSS from the approved design tokens and shell, then render to PNG.Building three pixel-accurate HTML mockups from the design tokens, then screenshotting them with Playwright.Verifying the three rendered mockups against the brief.**09-thumbnail-view.png** — Three-pane shell, Thumbnail active, 5-col card grid with teal selection ring, amber `?` / red `!` badges, PDF placeholder, shared nav + status bar.
+
+**10-scan-dialog.png** — Scan modal over dimmed shell: Brother selected, HP + Add by IP + Refresh, ADF/Color/300 dpi/Duplex, progress, AirScan footnote.
+
+**11-titlebar-import-menu.png** — Title-bar close-up: teal Scan + Import (open menu: Files…, Folder…, Open New/Old Receipts), segmented control.

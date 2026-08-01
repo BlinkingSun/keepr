@@ -106,3 +106,22 @@ and the user learns to ignore all of them.
 | Missing key data | Row marker plus a `--warn` cell marker on the empty field |
 | Split child | Persistent split badge linking to siblings |
 | Reviewed | `--ok`, understated — the absence of a warning is the reward |
+
+## Batch 2 additions (2026-08-01) — build targets
+
+Mockups 09/10/11. Presented to the user under their standing "keep building
+autonomously" instruction; build to these, and any user redirect wins.
+
+- **Thumbnail view** (09): responsive card grid, 4:5 letterboxed thumbs on
+  `--bg-elevated`, caption = vendor + right-aligned `.num` total + muted date.
+  Selection = teal ring. Flag badges reuse grid severity (red !, amber ?, muted
+  pending). PDF/no-image placeholder is text on elevated, no icon fonts.
+- **Scan dialog** (10): modal over dimmed shell; device list left with Refresh and
+  "Add by IP"; options right, DERIVED FROM CAPABILITIES ONLY; primary Scan bottom
+  right (dark text on teal); per-page progress list; destination note "Pages are
+  saved to Old Receipts and imported to the Inbox"; honest footnote that USB-only
+  scanners are not yet supported. Escape closes; focus lands on primary control.
+- **Title bar** (11): [Scan] [Import ▾] left of the view switcher, one aligned
+  right-side cluster. Import menu: Files… / Folder… / divider / Open New Receipts
+  Folder / Open Old Receipts Folder. Menu is an app-styled dropdown (tokens), not
+  a native menu, so it looks identical on both platforms.

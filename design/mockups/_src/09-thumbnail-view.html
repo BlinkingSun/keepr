@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>KeepR — Thumbnail view</title>
+  <link rel="stylesheet" href="shell.css" />
+</head>
+<body>
+  <div class="stage">
+    <div class="window">
+      <header class="titlebar">
+        <span class="traffic"></span>
+        <span class="brand">KeepR — Receipt Manager</span>
+        <div class="titlebar-actions">
+          <button class="btn-primary" type="button">Scan</button>
+          <div class="import-wrap">
+            <button class="btn-primary" type="button">Import <span class="chev"></span></button>
+          </div>
+          <div class="seg" role="tablist">
+            <button class="seg-item" type="button">Grid</button>
+            <button class="seg-item seg-active" type="button">Thumbnail</button>
+            <button class="seg-item" type="button">Details</button>
+          </div>
+        </div>
+        <div class="win-controls">
+          <span>─</span><span>□</span><span>×</span>
+        </div>
+      </header>
+
+      <div class="body">
+        <nav class="nav">
+          <div class="nav-row" style="margin-top:8px">
+            <svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1"/><path d="M5 3V2h6v1"/></svg>
+            <span>Inbox</span>
+            <span class="badge">17</span>
+          </div>
+
+          <div class="nav-head">Cabinet</div>
+          <div class="nav-row indent">
+            <span class="dot"></span>
+            <span>2026 Tax Year</span>
+          </div>
+          <div class="nav-row indent-2">
+            <span class="dot"></span>
+            <span>Q3</span>
+          </div>
+          <div class="nav-row indent-2 selected">
+            <span class="dot"></span>
+            <span>Materials</span>
+          </div>
+
+          <div class="nav-head">Review</div>
+          <div class="nav-row indent">
+            <span class="dot"></span>
+            <span>Needs Review</span>
+            <span class="badge badge-warn">3</span>
+          </div>
+
+          <div class="nav-head">Smart Filters</div>
+          <div class="nav-row indent">
+            <span class="dot"></span>
+            <span>View All</span>
+          </div>
+          <div class="nav-row indent">
+            <span class="dot"></span>
+            <span>Recently Added</span>
+          </div>
+          <div class="nav-row indent">
+            <span class="dot"></span>
+            <span>Unreviewed</span>
+          </div>
+
+          <div class="nav-spacer"></div>
+          <div class="nav-row trash">
+            <svg class="ic" viewBox="0 0 16 16"><path d="M3 4h10M6 4V3h4v1M5 4l.5 9h5L11 4"/></svg>
+            <span>Trash</span>
+          </div>
+        </nav>
+
+        <main class="content">
+          <div class="thumbs">
+            <!-- 1 selected Home Depot -->
+            <div class="card selected">
+              <div class="card-thumb">
+                <div class="receipt store">
+                  <div class="r-title">HOME DEPOT #4821</div>
+                  <div class="r-sub">1200 Commerce Blvd</div>
+                  <div class="r-line"><span>Lumber 2x4</span><span>48.00</span></div>
+                  <div class="r-line"><span>Screws box</span><span>12.99</span></div>
+                  <div class="r-line"><span>Paint gal</span><span>34.50</span></div>
+                  <div class="r-line"><span>…</span><span></span></div>
+                  <div class="r-total"><span>TOTAL</span><span>312.67</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">Home Depot</span>
+                <span class="card-total">$312.67</span>
+                <span class="card-date">07/12/26</span>
+              </div>
+            </div>
+
+            <!-- 2 Staples -->
+            <div class="card">
+              <div class="card-thumb">
+                <div class="receipt">
+                  <div class="r-title">STAPLES</div>
+                  <div class="r-sub">Store #1184</div>
+                  <div class="r-line"><span>Copy paper</span><span>24.99</span></div>
+                  <div class="r-line"><span>Binder 3pk</span><span>18.50</span></div>
+                  <div class="r-line"><span>Ink cart.</span><span>34.80</span></div>
+                  <div class="r-total"><span>TOTAL</span><span>87.44</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">Staples</span>
+                <span class="card-total">$87.44</span>
+                <span class="card-date">07/11/26</span>
+              </div>
+            </div>
+
+            <!-- 3 Shell with amber ? -->
+            <div class="card">
+              <div class="card-thumb">
+                <span class="flag flag-warn">?</span>
+                <div class="receipt gas">
+                  <div class="r-title">SHELL</div>
+                  <div class="r-sub">Station 4021</div>
+                  <div class="r-line"><span>Unleaded</span><span>64.72</span></div>
+                  <div class="r-line"><span>Tax</span><span>4.20</span></div>
+                  <div class="r-total"><span>TOTAL</span><span>68.92</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">Shell</span>
+                <span class="card-total">$68.92</span>
+                <span class="card-date">07/10/26</span>
+              </div>
+            </div>
+
+            <!-- 4 FedEx -->
+            <div class="card">
+              <div class="card-thumb">
+                <div class="receipt">
+                  <div class="r-title">FedEx</div>
+                  <div class="r-sub">Ground · TRK 7741</div>
+                  <div class="r-line"><span>Shipping</span><span>34.15</span></div>
+                  <div class="r-total"><span>TOTAL</span><span>34.15</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">FedEx</span>
+                <span class="card-total">$34.15</span>
+                <span class="card-date">07/09/26</span>
+              </div>
+            </div>
+
+            <!-- 5 missing vendor red ! -->
+            <div class="card">
+              <div class="card-thumb">
+                <span class="flag flag-danger">!</span>
+                <div class="receipt">
+                  <div class="r-title">——————</div>
+                  <div class="r-sub"> illegible header </div>
+                  <div class="r-line"><span>Item A</span><span>48.00</span></div>
+                  <div class="r-line"><span>Item B</span><span>62.55</span></div>
+                  <div class="r-total"><span>TOTAL</span><span>124.30</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor" style="color:var(--text-muted)">—</span>
+                <span class="card-total">$124.30</span>
+                <span class="card-date">07/08/26</span>
+              </div>
+            </div>
+
+            <!-- 6 Lowe's -->
+            <div class="card">
+              <div class="card-thumb">
+                <div class="receipt store">
+                  <div class="r-title">LOWE'S</div>
+                  <div class="r-sub">#2941 · Pro desk</div>
+                  <div class="r-line"><span>Drywall</span><span>89.40</span></div>
+                  <div class="r-line"><span>Compound</span><span>22.10</span></div>
+                  <div class="r-line"><span>Tape</span><span>25.80</span></div>
+                  <div class="r-total"><span>TOTAL</span><span>156.20</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">Lowe's</span>
+                <span class="card-total">$156.20</span>
+                <span class="card-date">07/07/26</span>
+              </div>
+            </div>
+
+            <!-- 7 Costco -->
+            <div class="card">
+              <div class="card-thumb">
+                <div class="receipt">
+                  <div class="r-title">COSTCO</div>
+                  <div class="r-sub">Wholesale #412</div>
+                  <div class="r-line"><span>Paper towels</span><span>24.99</span></div>
+                  <div class="r-line"><span>Batteries</span><span>32.50</span></div>
+                  <div class="r-line"><span>Water 40pk</span><span>29.99</span></div>
+                  <div class="r-total"><span>TOTAL</span><span>99.15</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">Costco</span>
+                <span class="card-total">$99.15</span>
+                <span class="card-date">07/06/26</span>
+              </div>
+            </div>
+
+            <!-- 8 Chevron -->
+            <div class="card">
+              <div class="card-thumb">
+                <div class="receipt gas">
+                  <div class="r-title">CHEVRON</div>
+                  <div class="r-sub">#8821</div>
+                  <div class="r-line"><span>Regular</span><span>48.60</span></div>
+                  <div class="r-line"><span>Tax</span><span>3.80</span></div>
+                  <div class="r-total"><span>TOTAL</span><span>52.40</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">Chevron</span>
+                <span class="card-total">$52.40</span>
+                <span class="card-date">07/05/26</span>
+              </div>
+            </div>
+
+            <!-- 9 PDF placeholder -->
+            <div class="card">
+              <div class="card-thumb pdf">
+                <div class="pdf-placeholder">
+                  <span class="pdf-label">PDF</span>
+                  <span class="pdf-name">Acme Invoice 4412</span>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">Acme Supply Co.</span>
+                <span class="card-total">$1,240.00</span>
+                <span class="card-date">07/03/26</span>
+              </div>
+            </div>
+
+            <!-- 10 UPS -->
+            <div class="card">
+              <div class="card-thumb">
+                <div class="receipt">
+                  <div class="r-title">UPS</div>
+                  <div class="r-sub">Store #3310</div>
+                  <div class="r-line"><span>Package</span><span>28.90</span></div>
+                  <div class="r-total"><span>TOTAL</span><span>28.90</span></div>
+                </div>
+              </div>
+              <div class="card-cap">
+                <span class="card-vendor">UPS</span>
+                <span class="card-total">$28.90</span>
+                <span class="card-date">07/04/26</span>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <aside class="inspector">
+          <div class="pane-head">Receipt Details</div>
+          <div class="insp-preview">
+            <div class="receipt store">
+              <div class="r-title">HOME DEPOT #4821</div>
+              <div class="r-sub">1200 Commerce Blvd<br/>07/12/26 14:22</div>
+              <div class="r-line"><span>Lumber 2x4</span><span>48.00</span></div>
+              <div class="r-line"><span>Screws box</span><span>12.99</span></div>
+              <div class="r-line"><span>Paint gal</span><span>34.50</span></div>
+              <div class="r-line"><span>…</span><span></span></div>
+              <div class="r-total"><span>TOTAL</span><span>312.67</span></div>
+              <div style="margin-top:6px;font-size:7px;color:#555">VISA ····4242</div>
+            </div>
+          </div>
+          <div class="insp-form">
+            <div class="field">
+              <label>Date</label>
+              <div class="input">07/12/2026</div>
+            </div>
+            <div class="field">
+              <label>Vendor</label>
+              <div class="input">Home Depot</div>
+            </div>
+            <div class="field">
+              <label>Category</label>
+              <div class="input">Materials</div>
+            </div>
+            <div class="field">
+              <label>Payment Method</label>
+              <div class="input">Visa ····4242</div>
+            </div>
+            <div class="field">
+              <label>Tax</label>
+              <div class="input num">$41.80</div>
+            </div>
+            <div class="field">
+              <label>Total</label>
+              <div class="input num">$312.67</div>
+            </div>
+          </div>
+          <div class="insp-actions">
+            <button class="btn-primary" type="button">Edit Receipt</button>
+          </div>
+        </aside>
+      </div>
+
+      <footer class="statusbar">
+        <span>12 receipts · Materials filter</span>
+        <div class="status-right">
+          <span class="stat">Sum <strong>$1,273.12</strong></span>
+          <span class="stat">Tax <strong>$135.15</strong></span>
+          <span class="stat-queue">3 unreviewed</span>
+        </div>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

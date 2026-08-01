@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>KeepR — Title bar Import menu</title>
+  <link rel="stylesheet" href="shell.css" />
+  <style>
+    /* Close-up: crop to title bar + menu, crisp spacing */
+    body { background: #070809; }
+    .stage.crop {
+      padding: 48px 40px;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    .stage.crop .window {
+      width: 920px;
+      height: auto;
+      min-height: 0;
+      border-radius: 10px;
+      overflow: visible;
+    }
+    .stage.crop .titlebar {
+      border-radius: 10px 10px 0 0;
+      height: 48px;
+      padding: 0 16px;
+    }
+    .stage.crop .btn-primary {
+      height: 30px;
+      padding: 0 16px;
+      font-size: 13px;
+    }
+    .stage.crop .seg {
+      height: 30px;
+    }
+    .stage.crop .seg-item {
+      padding: 0 14px;
+      font-size: 12.5px;
+    }
+    .stage.crop .brand {
+      font-size: 13.5px;
+    }
+    .stage.crop .menu {
+      top: calc(100% + 6px);
+      min-width: 236px;
+      padding: 5px;
+    }
+    .stage.crop .menu-item {
+      height: 30px;
+      padding: 0 12px;
+      font-size: 13px;
+    }
+    .stage.crop .menu-sep {
+      margin: 5px 8px;
+    }
+    /* Soft ghost of the pane below for context */
+    .ghost {
+      height: 120px;
+      background: linear-gradient(180deg, var(--bg-base) 0%, #0a0c0e 100%);
+      border-top: 1px solid var(--border-subtle);
+      border-radius: 0 0 10px 10px;
+      opacity: 0.55;
+      display: flex;
+    }
+    .ghost-nav {
+      width: 160px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border-subtle);
+      border-radius: 0 0 0 10px;
+      opacity: 0.7;
+    }
+    .ghost-main { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="stage crop">
+    <div class="window">
+      <header class="titlebar">
+        <span class="traffic"></span>
+        <span class="brand">KeepR — Receipt Manager</span>
+        <div class="titlebar-actions">
+          <button class="btn-primary" type="button">Scan</button>
+          <div class="import-wrap">
+            <button class="btn-primary" type="button">Import <span class="chev"></span></button>
+            <div class="menu" role="menu">
+              <div class="menu-item hot">Files…</div>
+              <div class="menu-item">Folder…</div>
+              <div class="menu-sep"></div>
+              <div class="menu-item">Open New Receipts Folder</div>
+              <div class="menu-item">Open Old Receipts Folder</div>
+            </div>
+          </div>
+          <div class="seg" role="tablist">
+            <button class="seg-item seg-active" type="button">Grid</button>
+            <button class="seg-item" type="button">Thumbnail</button>
+            <button class="seg-item" type="button">Details</button>
+          </div>
+        </div>
+        <div class="win-controls">
+          <span>─</span><span>□</span><span>×</span>
+        </div>
+      </header>
+      <div class="ghost">
+        <div class="ghost-nav"></div>
+        <div class="ghost-main"></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
