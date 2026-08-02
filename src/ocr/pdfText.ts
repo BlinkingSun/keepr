@@ -54,6 +54,10 @@ export interface GeometryToken {
 
 export type LayerVerdict = { usable: true } | { usable: false; reason: string }
 
+/** At or below this many tokens, a layer is treated as a short receipt rather
+ *  than a page of text, and the row/coverage thresholds relax accordingly. */
+const SPARSE_TOKEN_LIMIT = 12
+
 /* ---------------------------------------------------------------------------
  * Gates
  * ------------------------------------------------------------------------ */
@@ -127,13 +131,29 @@ export function isLayerUsable(
   }
   // A letter-height page with almost no vertical structure is not a document
   // layout; 300pt at 200dpi is ~833px.
+  // Structure gates, scaled to how much text the layer actually claims.
+  //
+  // The first version demanded 4+ rows and 2% page coverage of everything on a
+  // tall page, which refused a perfectly good two-line parking receipt scanned
+  // onto US Letter — a very common ScanSnap output, and precisely the file the
+  // fast path should handle. Sparse is not the same as degenerate. A handful of
+  // tokens is legitimately sparse; a page CLAIMING lots of text while occupying
+  // almost none of it is the suspicious case, so the strict thresholds now
+  // apply only once the token count is high enough for them to mean something.
+  const sparseByNature = tokens.length <= SPARSE_TOKEN_LIMIT
   const bands = Math.max(countBands(tokens, 'y'), countBands(tokens, 'x'))
-  if (page.heightPx > (300 * PDF_TEXT_DEFAULT_DPI) / 72 && bands < 4) {
-    return { usable: false, reason: 'degenerate geometry: fewer than 4 distinct text rows or columns' }
+  const minBands = sparseByNature ? 2 : 4
+  if (page.heightPx > (300 * PDF_TEXT_DEFAULT_DPI) / 72 && bands < minBands) {
+    return {
+      usable: false,
+      reason: `degenerate geometry: ${bands} distinct text row(s)/column(s), need ${minBands}`,
+    }
   }
-  const coverage = coverageRatio(tokens, page.widthPx, page.heightPx)
-  if (coverage < 0.02) {
-    return { usable: false, reason: `degenerate geometry: text covers ${(coverage * 100).toFixed(1)}% of the page` }
+  if (!sparseByNature) {
+    const coverage = coverageRatio(tokens, page.widthPx, page.heightPx)
+    if (coverage < 0.02) {
+      return { usable: false, reason: `degenerate geometry: text covers ${(coverage * 100).toFixed(1)}% of the page` }
+    }
   }
 
   // (c) junk — present and positioned, but not readable content.
@@ -227,10 +247,17 @@ function mergeIntoWords(subs: SubToken[]): Word[] {
     .filter((w) => w > 0)
     .sort((a, b) => a - b)
   const medianChar = charWidths[Math.floor(charWidths.length / 2)] ?? 6
-  const mergeGap = medianChar * 0.6
 
   const heights = subs.map((s) => s.h).filter((h) => h > 0).sort((a, b) => a - b)
   const medianH = heights[Math.floor(heights.length / 2)] ?? 12
+
+  // Merge threshold from BOTH the median character width and the ink height.
+  // Median char width alone is dragged down by narrow glyphs (i, l, .) on one
+  // hand, and on the other it can exceed a real space — a 12pt Helvetica space
+  // is 3.3pt while the median char is ~6pt, so a 0.6x-of-char threshold would
+  // swallow genuine word gaps. Taking the tighter of the two keeps glyph
+  // reassembly working while leaving real spaces intact.
+  const mergeGap = Math.min(medianChar * 0.6, medianH * 0.3)
   const lineTol = Math.max(2, medianH * 0.6)
 
   // Group into lines by vertical centre, then order left to right.

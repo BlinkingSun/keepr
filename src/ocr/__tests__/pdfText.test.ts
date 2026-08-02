@@ -24,6 +24,7 @@ import {
   rotated90Pdf,
   plainTextPdf,
   whitespaceOnlyPdf,
+  shortReceiptPdf,
 } from './fixtures/pdfFixtures.ts'
 
 const DPI = 200
@@ -146,6 +147,29 @@ test('a /Rotate 90 page maps into the rotated raster, not the unrotated page', a
   }
 })
 
+test('a sparse two-line receipt on a full page is accepted, not refused', async () => {
+  // Regression for the execution audit's D1: demanding 4+ text rows and 2% page
+  // coverage on any tall page threw away the fast path for the most ordinary
+  // scan there is — a parking stub on US Letter.
+  const p = await fixture('short.pdf', shortReceiptPdf())
+  const r = await extractPdfPageText(p, 0, { dpi: DPI })
+  assert.ok(r, 'a short receipt layer must still be usable')
+  assert.match(r.text, /PARKING METER/)
+  assert.match(r.text, /TOTAL 4\.00/)
+})
+
+test('a real word space is not swallowed by the merge threshold', async () => {
+  // D2: the merge gap must reassemble split glyph runs WITHOUT gluing genuine
+  // words. 12pt Helvetica's space is 3.3pt while its median char is ~6pt, so a
+  // char-width-only threshold merged real spaces.
+  const p = await fixture('short2.pdf', shortReceiptPdf())
+  const r = await extractPdfPageText(p, 0, { dpi: DPI })
+  assert.ok(r)
+  const words = r.words.map((w) => w.text)
+  assert.ok(words.includes('TOTAL'), `TOTAL must stay its own token, got ${JSON.stringify(words)}`)
+  assert.ok(words.includes('4.00'), `the amount must stay separate, got ${JSON.stringify(words)}`)
+})
+
 test('the gate rejects zero-area and junk layers', () => {
   const page = { widthPx: 1700, heightPx: 2200 }
   assert.equal(isLayerUsable([], page).usable, false)
@@ -163,6 +187,14 @@ test('the gate rejects zero-area and junk layers', () => {
   const v = isLayerUsable(junk, page)
   assert.equal(v.usable, false)
   assert.match(v.usable === false ? v.reason : '', /junk|alphanumeric/i)
+
+  // Relaxing the thresholds for sparse layers must not open a hole: a handful
+  // of tokens stacked on one point is still degenerate.
+  const collapsed = Array.from({ length: 5 }, () => ({
+    text: 'TOTAL 4.00',
+    bbox: { x: 200, y: 300, w: 180, h: 30 },
+  }))
+  assert.equal(isLayerUsable(collapsed, page).usable, false)
 })
 
 test('normalisation strips the artefacts OCR output never has', () => {

@@ -232,6 +232,25 @@ export function plainTextPdf(): Buffer {
   return buildOnePagePdf({ content })
 }
 
+/**
+ * A two-line parking receipt on a full US Letter page.
+ *
+ * The batch-3 execution audit proved this shape was being REFUSED by the
+ * structure gate and pushed onto slow OCR, which is backwards: it is one of the
+ * most common things anyone scans, and its text layer is perfectly good. Sparse
+ * is not degenerate.
+ */
+export function shortReceiptPdf(): Buffer {
+  const lines = [
+    { text: 'PARKING METER 118', x: 72, yFromTop: 90 },
+    { text: 'TOTAL 4.00', x: 72, yFromTop: 120 },
+  ]
+  let content = 'BT /F1 12 Tf\n'
+  for (const l of lines) content += `1 0 0 1 ${l.x} ${toPdfY(l.yFromTop)} Tm (${escapeText(l.text)}) Tj\n`
+  content += 'ET'
+  return buildOnePagePdf({ content })
+}
+
 /** Text layer that is only whitespace — present but worthless. */
 export function whitespaceOnlyPdf(): Buffer {
   let content = 'BT /F1 12 Tf\n'
