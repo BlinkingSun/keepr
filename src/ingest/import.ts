@@ -12,6 +12,8 @@
  */
 
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 import { access, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { ImportRequest, ImportResult } from '../shared/ipc.ts'
@@ -19,6 +21,7 @@ import type { LibraryRelPath, Sha256 } from '../shared/types.ts'
 import { asRelPath } from '../shared/types.ts'
 import { walkForImportable } from './dirwalk.ts'
 import { runOcrJob } from './ocrRunner.ts'
+import { extractPdfPageText } from '../ocr/pdfText.ts'
 import type { IngestDeps, IngestImportOptions, OcrPageWork } from './types.ts'
 import { parseVCards } from './vcard.ts'
 
@@ -123,6 +126,18 @@ export async function importFiles(
   })
 
   if (ocrWork.length === 0) {
+    // No OCR to run is no longer the same as no text to parse. A searchable PDF
+    // has its words written straight onto the page rows by the text-layer path,
+    // so extraction still has to happen here — otherwise the item imports with
+    // a perfect text layer and every field blank.
+    for (const itemId of itemIds) {
+      try {
+        const { extractFromStoredPages } = await import('./extract.ts')
+        extractFromStoredPages(deps, itemId)
+      } catch {
+        /* best-effort, exactly as on the OCR path */
+      }
+    }
     await deps.jobs.update(job.id, { status: 'done', doneUnits: 0, failedUnits: 0 })
   } else {
     const ocrPromise = runOcrJob(deps, job.id, ocrWork)
@@ -312,6 +327,13 @@ export async function importPagesAsItem(
   })
 
   if (ocrWork.length === 0) {
+    // Same reasoning as importFiles: pages can arrive already carrying text.
+    try {
+      const { extractFromStoredPages } = await import('./extract.ts')
+      extractFromStoredPages(deps, itemId)
+    } catch {
+      /* best-effort */
+    }
     await deps.jobs.update(job.id, { status: 'done', doneUnits: 0, failedUnits: 0 })
   } else {
     const ocrPromise = runOcrJob(deps, job.id, ocrWork)
@@ -558,12 +580,42 @@ async function importPdf(
         seq,
       })
 
-      ocrWork.push({
-        pageId,
-        itemId,
-        fileRelPath: String(rel),
-        generation: readGeneration(deps, pageId),
-      })
+      const generation = readGeneration(deps, pageId)
+
+      // A searchable PDF already carries its text — usually better text than we
+      // would get by re-OCRing our own 200 DPI raster of it (ScanSnap's optional
+      // ABBYY pass, or any born-digital receipt). Take it when it is
+      // trustworthy; pdfText returns null when it is absent, junk, or
+      // misaligned, and then this page enqueues for OCR exactly as before.
+      //
+      // The raster is still stored either way: thumbnails, the viewer and
+      // click-to-assign all need the pixels regardless of where the words came
+      // from.
+      let usedTextLayer = false
+      try {
+        const layer = await extractPdfPageText(filePath, i, { dpi: PDF_RASTER_DPI })
+        if (layer) {
+          const applied = deps.repos.pages.setOcrResult(pageId, {
+            text: layer.text,
+            words: layer.words,
+            confidence: layer.confidence,
+            engine: layer.engine,
+            generation,
+          })
+          usedTextLayer = applied.applied
+        }
+      } catch {
+        // A text-layer failure is never fatal: it just means OCR does the work.
+      }
+
+      if (!usedTextLayer) {
+        ocrWork.push({
+          pageId,
+          itemId,
+          fileRelPath: String(rel),
+          generation,
+        })
+      }
     }
   } catch (e: unknown) {
     // All-or-nothing: never leave a half-rasterized PDF item that the watcher
@@ -582,16 +634,36 @@ async function importPdf(
  * known empty-workerSrc failure path, use a direct pdfjs render (still no
  * nested OCR pool — this is image work only).
  */
+/**
+ * Filesystem URL of pdfjs's bundled standard-font data.
+ *
+ * Returns undefined rather than throwing when it cannot be located: a missing
+ * font pack degrades rendering, it does not justify failing the import.
+ */
+function standardFontsDir(): string | undefined {
+  try {
+    const req = createRequire(import.meta.url)
+    const pkg = req.resolve('pdfjs-dist/package.json')
+    return pathToFileURL(path.join(path.dirname(pkg), 'standard_fonts') + path.sep).href
+  } catch {
+    return undefined
+  }
+}
+
+/** One source of truth for PDF raster resolution: the text-layer path must use
+ *  the SAME dpi so its word boxes land in the stored master's pixel space. */
+export const PDF_RASTER_DPI = 200
+
 async function rasterizePdfPage(
   deps: IngestDeps,
   filePath: string,
   pageIndex: number,
 ): Promise<{ buffer: Buffer; width: number; height: number }> {
   try {
-    return await rasterizePdfPageDirect(filePath, pageIndex, 200)
+    return await rasterizePdfPageDirect(filePath, pageIndex, PDF_RASTER_DPI)
   } catch (directErr) {
     try {
-      return await deps.imagePool.rasterizePdfPage(filePath, pageIndex, { dpi: 200 })
+      return await deps.imagePool.rasterizePdfPage(filePath, pageIndex, { dpi: PDF_RASTER_DPI })
     } catch {
       throw directErr
     }
@@ -803,6 +875,19 @@ async function rasterizePdfPageDirect(
     disableWorker: true,
     isEvalSupported: false,
     useSystemFonts: true,
+    // pdfjs's bundled data for the 14 standard fonts. Correct to supply, but
+    // measured honestly: it does NOT rescue a PDF that draws in non-embedded
+    // Helvetica/Times/Courier, because `isEvalSupported: false` above stops
+    // pdfjs compiling glyph programs ("getPathGenerator - ignoring character"),
+    // so those glyphs rasterize blank. Embedded-font PDFs — which includes
+    // every scanner-produced file — render correctly either way.
+    //
+    // We keep eval disabled: this app rasterizes PDFs from arbitrary sources,
+    // and a blank thumbnail is a far better failure than executing a font
+    // program from an untrusted file. The text-layer path covers the data side
+    // of that case anyway: the fields still extract, only the page image is
+    // blank.
+    standardFontDataUrl: standardFontsDir(),
   } as Parameters<typeof getDocument>[0]).promise
 
   try {

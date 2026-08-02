@@ -198,6 +198,46 @@
   font-weight: 600;
 }
 
+/* Empty discovery: folder route for non-eSCL scanners (ScanSnap, etc.). */
+.scan-empty-route {
+  margin: var(--sp-3) 0;
+}
+.scan-empty-route .scan-empty {
+  margin: 0 0 var(--sp-3);
+}
+.scan-folder-btn {
+  appearance: none;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  height: 30px;
+  width: 100%;
+  cursor: pointer;
+  text-align: center;
+}
+.scan-folder-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.scan-folder-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.scan-folder-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.scan-empty-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: var(--sp-2) 0 0;
+}
+
 .scan-opt-row {
   margin-bottom: var(--sp-4);
 }

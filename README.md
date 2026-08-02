@@ -42,7 +42,8 @@ awkward to get out of. KeepR is an attempt at the same job with three rules:
 | Flagging: what OCR could not read or is unsure about | working |
 | CSV / Excel / searchable-PDF export | working |
 | Backup, restore, archive, trash | working |
-| Scanner (TWAIN/WIA) | **not built** |
+| Scanner — eSCL/AirScan network devices | working |
+| Scanner — ScanSnap and other non-eSCL (folder watch) | working; see [Scanning](docs/scanning.md) |
 | Virtual printer | **not built** |
 | Reporting suite (expense reports with cover pages) | **not built** |
 | Accounting bridges (QIF/OFX, QuickBooks) | **not built** |
@@ -139,6 +140,16 @@ The library on disk:
 Content addressing means importing the same receipt twice stores one file, and the
 hash is verifiable proof that three children of a split cite the same image.
 
+## Scanning
+
+KeepR drives **eSCL (AirScan)** network scanners from the Scan dialog. Devices
+that do not speak eSCL — every ScanSnap model, and many Brother/Canon units even
+over Wi-Fi — scan through their own software into the library's **New Receipts**
+folder; KeepR imports files that land there and moves them to **Old Receipts**.
+
+Full setup, including the exact ScanSnap Home profile (**Type must be
+`Mac (Scan to file)`**, not Manage-in-Home): **[docs/scanning.md](docs/scanning.md)**.
+
 ## Things worth knowing before you contribute
 
 These are not style preferences. Each came out of an audit or a bug, and each has a
@@ -169,8 +180,10 @@ Yes please. The most useful contributions, roughly in order:
    `spikes/corpus/generate.ts` that currently fails, then fix it. Do not upload
    photographs of real receipts — they are someone's financial records. The corpus
    is synthetic on purpose.
-2. **Scanner support** (TWAIN on Windows, ImageCaptureCore on macOS, SANE on Linux).
-   Designed for behind an interface; nothing is written yet.
+2. **Broader scanner drivers** (TWAIN on Windows, ImageCaptureCore on macOS).
+   eSCL/AirScan and the New Receipts folder path already work; see
+   [docs/scanning.md](docs/scanning.md). ScanSnap cannot be driven over the
+   network by any third-party app — that is a device limitation, not a gap to fill.
 3. **The reporting suite** — expense reports with cover pages and embedded images.
 4. **A local vision-model OCR provider.** `OcrProvider` is a swappable seam
    precisely so this can be added without touching anything above it.
@@ -190,8 +203,9 @@ records deserves one:
   plus adversarial schema assertions that try to break the invariants.
 - **Good:** import, OCR, extraction, search, export, flagging. All work end to end
   and are measured, not assumed.
-- **Missing:** scanner capture, the virtual printer, the reporting suite, accounting
-  exports. See the table above.
+- **Missing:** TWAIN/ICA capture, the virtual printer, the reporting suite,
+  accounting exports. eSCL network scan and the watched New Receipts folder path
+  are in; see [docs/scanning.md](docs/scanning.md). See the table above.
 - **Untested:** Linux entirely. Real-world OCR at volume. Libraries larger than a
   few thousand items.
 

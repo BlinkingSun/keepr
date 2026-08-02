@@ -1,14 +1,16 @@
 /**
- * ScanPanel — pure presentational modal over props.
+ * ScanPanel — presentational modal over props.
  *
- * eSCL (AirScan) network scanners only. USB-only scanners need native
- * ImageCaptureCore/TWAIN work and are out of scope — empty discovery says so
- * honestly rather than implying the feature is broken.
+ * Discovers eSCL (AirScan) network scanners. Devices that do not speak eSCL
+ * (ScanSnap; many Brother/Canon units, including over Wi-Fi) are not listed —
+ * empty state routes those users to the New Receipts folder instead.
  *
- * No IPC, no fs. Logic lives in options.ts / pages.ts / filename.ts.
+ * Option/page/filename logic lives in options.ts / pages.ts / filename.ts.
+ * The folder button uses the existing shell:openPath IPC channel.
  */
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { ScanCaps, ScanDevice, ScanOptions } from '../../shared/types.ts'
+import { invoke } from '../bridge.ts'
 import {
   availableColorModes,
   availableResolutions,
@@ -163,14 +165,30 @@ export function ScanPanel(props: ScanPanelProps) {
             </div>
 
             {devices.length === 0 && !discovering && (
-              <p className="scan-empty">
-                <strong>No network scanners found.</strong>
-                {' '}
-                KeepR uses eSCL (AirScan) over the network. USB-only scanners
-                are not supported yet — they need a native driver path that
-                this version does not include. Try Refresh, or add a scanner by
-                IP if your network blocks mDNS.
-              </p>
+              <div className="scan-empty-route">
+                <p className="scan-empty">
+                  <strong>No network scanners found.</strong>
+                  {' '}
+                  KeepR finds scanners that speak eSCL (AirScan). ScanSnap, and
+                  many Brother and Canon models, do not speak it at all —
+                  including over Wi-Fi. Those scan through their own software
+                  instead.
+                </p>
+                <button
+                  type="button"
+                  className="scan-folder-btn"
+                  disabled={scanning}
+                  onClick={() => {
+                    void invoke('shell:openPath', { target: 'newReceipts' })
+                  }}
+                >
+                  Open New Receipts folder
+                </button>
+                <p className="scan-empty-hint">
+                  Point your scanner&apos;s software at that folder and KeepR
+                  imports whatever lands there automatically.
+                </p>
+              </div>
             )}
 
             {devices.map((d) => (
@@ -355,7 +373,8 @@ export function ScanPanel(props: ScanPanelProps) {
 
         <div className="scan-foot">
           <p className="scan-footnote">
-            Network (AirScan/eSCL) scanners. USB-only scanners not yet supported.
+            Network eSCL (AirScan) scanners. ScanSnap and similar devices: scan
+            to the New Receipts folder instead.
           </p>
           <div className="scan-foot-actions">
             {scanning && (
